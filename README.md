@@ -45,6 +45,7 @@ chrome_extension/
 ├── CHROMEWEBSTORE.md          # Chrome Web Store listing metadata & privacy justifications
 ├── GEMINI.md                  # Project rules and guidelines (no emoji rule)
 ├── package.json               # Test script configuration
+├── diagnostic.js              # Diagnostic snippet to inspect compatibility on private sites
 ├── icons/                     # Extension icons (16px, 48px, 128px PNG)
 │   ├── icon-16.png
 │   ├── icon-48.png
@@ -58,7 +59,7 @@ chrome_extension/
 │   └── popup.js               # Allowlist management & storage synchronization
 ├── content/
 │   ├── content.js             # DOM scanner, Shadow DOM overlay manager & click handler
-│   └── content.css            # Highlight & tooltip styles inside Shadow DOM
+│   └── content.css            # Highlight & overlay styles inside Shadow DOM
 ├── skills/                    # Antigravity skill definitions
 │   └── verb-tense-highlighter/
 │       └── SKILL.md
@@ -89,6 +90,17 @@ chrome_extension/
 3. Click **"Allow on This Website"** (or add custom domain patterns in the popup).
 4. Text fields containing sentences with `"is"` or `"are"` will display matching words highlighted in yellow with an underline.
 5. Click on the yellow highlighted word to replace it with its past tense form.
+
+---
+
+## Troubleshooting on Private Sites
+
+If the extension is not highlighting text fields on a private website:
+
+1. Open the target website.
+2. Open Chrome Developer Tools (**F12** or Right Click &rarr; **Inspect** &rarr; **Console** tab).
+3. Copy and paste the contents of [`diagnostic.js`](diagnostic.js) into the console and press Enter.
+4. Share the JSON output to identify the exact input type, shadow DOM structure, or allowlist status on that page.
 
 ---
 
