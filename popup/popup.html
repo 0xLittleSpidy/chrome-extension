@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Is & Are Replacer</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="popup-container">
+    <!-- Header -->
+    <header class="header">
+      <div class="header-brand">
+        <div class="logo-icon">
+          <span class="logo-text">is/are</span>
+          <span class="logo-arrow">→</span>
+          <span class="logo-text was">was/were</span>
+        </div>
+        <div class="header-titles">
+          <h1 class="title">Is & Are Replacer</h1>
+          <p class="subtitle">Text Field Scanner & Replacer</p>
+        </div>
+      </div>
+      <div id="site-status-badge" class="status-badge badge-inactive">
+        <span class="status-dot"></span>
+        <span id="site-status-text">Inactive</span>
+      </div>
+    </header>
+
+    <!-- Current Site Card -->
+    <section class="card current-site-card">
+      <div class="card-header">
+        <span class="section-label">Current Website</span>
+        <span id="current-site-host" class="current-host-name">Detecting...</span>
+      </div>
+      <div class="current-site-actions">
+        <button id="toggle-current-site-btn" class="btn btn-primary" disabled>
+          <svg class="btn-icon" viewBox="0 0 20 20" fill="currentColor">
+            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-11a1 1 0 10-2 0v2H7a1 1 0 100 2h2v2a1 1 0 102 0v-2h2a1 1 0 100-2h-2V7z" clip-rule="evenodd" />
+          </svg>
+          <span id="toggle-current-site-label">Allow on This Website</span>
+        </button>
+      </div>
+    </section>
+
+    <!-- Add Custom Website Section -->
+    <section class="add-section">
+      <label for="custom-domain-input" class="section-label">Add Website to Allowlist</label>
+      <form id="add-form" class="input-group">
+        <input 
+          type="text" 
+          id="custom-domain-input" 
+          placeholder="e.g. example.com or *.domain.org" 
+          autocomplete="off" 
+          spellcheck="false"
+        />
+        <button type="submit" id="add-domain-btn" class="btn btn-secondary">
+          Add
+        </button>
+      </form>
+      <div id="add-feedback" class="feedback-msg"></div>
+    </section>
+
+    <!-- Allowlist Management Section -->
+    <section class="allowlist-section">
+      <div class="section-header">
+        <span class="section-label">Allowlisted Websites</span>
+        <span id="allowlist-count" class="count-badge">0</span>
+      </div>
+
+      <div id="allowlist-container" class="allowlist-list">
+        <!-- Rendered dynamically -->
+      </div>
+
+      <div id="empty-state" class="empty-state">
+        <p class="empty-title">No websites allowlisted</p>
+        <p class="empty-desc">The extension only scans text fields on allowlisted websites. Add this site or enter a domain above.</p>
+      </div>
+    </section>
+
+    <!-- Quick Help / Summary -->
+    <footer class="footer">
+      <div class="tip-box">
+        <svg class="tip-icon-svg" width="14" height="14" viewBox="0 0 20 20" fill="#a16207">
+          <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"/>
+        </svg>
+        <p class="tip-text">Underlines & highlights "is" and "are" in yellow in text fields. Click any highlight to replace with "was" or "were".</p>
+      </div>
+    </footer>
+  </div>
+
+  <script src="../lib/allowlist-utils.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>

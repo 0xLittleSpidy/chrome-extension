@@ -1,0 +1,5 @@
+node_modules/
+.tmp/
+*.crx
+*.pem
+.DS_Store

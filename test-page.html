@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Is & Are Replacer Test Suite</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      margin: 30px auto;
+      max-width: 800px;
+      padding: 0 20px;
+      line-height: 1.5;
+      background: #f8fafc;
+      color: #1e293b;
+    }
+    h1 {
+      font-size: 24px;
+      color: #0f172a;
+      margin-bottom: 8px;
+    }
+    .intro {
+      color: #475569;
+      margin-bottom: 24px;
+    }
+    .field-card {
+      background: #ffffff;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 16px;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+    }
+    .field-card label {
+      display: block;
+      font-weight: 600;
+      font-size: 14px;
+      margin-bottom: 6px;
+      color: #334155;
+    }
+    textarea, input[type="text"], input[type="search"] {
+      width: 100%;
+      padding: 10px 12px;
+      font-size: 15px;
+      font-family: inherit;
+      border: 1px solid #cbd5e1;
+      border-radius: 6px;
+      box-sizing: border-box;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    textarea:focus, input:focus {
+      border-color: #2563eb;
+    }
+    textarea {
+      min-height: 100px;
+      resize: vertical;
+    }
+    .btn {
+      background: #2563eb;
+      color: #fff;
+      border: none;
+      padding: 8px 16px;
+      border-radius: 6px;
+      font-size: 14px;
+      cursor: pointer;
+      font-weight: 500;
+    }
+    .btn:hover {
+      background: #1d4ed8;
+    }
+    .scrollable-box {
+      max-height: 140px;
+      overflow-y: auto;
+      border: 1px dashed #cbd5e1;
+      padding: 12px;
+      border-radius: 6px;
+      background: #f1f5f9;
+    }
+  </style>
+</head>
+<body>
+  <h1>Is & Are Replacer Extension Test Suite</h1>
+  <p class="intro">
+    This page tests the extension's ability to scan text fields, highlight "is" and "are" in yellow with an underline, and replace them with "was" and "were" on click.
+  </p>
+
+  <div class="field-card">
+    <label for="textarea-standard">Standard Textarea ("is" &rarr; "was"):</label>
+    <textarea id="textarea-standard">This is a great day. The island is beautiful. It is very calm outside.</textarea>
+  </div>
+
+  <div class="field-card">
+    <label for="textarea-are">Plural Textarea ("are" &rarr; "were"):</label>
+    <textarea id="textarea-are">They are learning quickly. We are ready now. You are doing well.</textarea>
+  </div>
+
+  <div class="field-card">
+    <label for="input-standard">Standard Input Field:</label>
+    <input type="text" id="input-standard" value="The weather is nice today." />
+  </div>
+
+  <div class="field-card">
+    <label for="textarea-edgecases">Edge Cases & False Positives Textarea:</label>
+    <textarea id="textarea-edgecases">Is this capitalized? Are they ready? What IS that? Who ARE they? This island dismisses all issues in this area with his sister and parent.</textarea>
+  </div>
+
+  <div class="field-card">
+    <label>Dynamic Fields Test:</label>
+    <button id="add-dynamic-btn" class="btn" type="button">Add Dynamic Textbox</button>
+    <div id="dynamic-container" style="margin-top: 12px;"></div>
+  </div>
+
+  <div class="field-card">
+    <label>Scrollable Container Test:</label>
+    <div class="scrollable-box" id="scroll-container">
+      <p style="margin-top: 0;">Scroll down to see the textarea inside this overflow container:</p>
+      <div style="height: 60px;"></div>
+      <textarea id="textarea-nested">He is learning. They are coding.</textarea>
+      <div style="height: 100px;"></div>
+    </div>
+  </div>
+
+  <script>
+    document.getElementById('add-dynamic-btn').addEventListener('click', () => {
+      const container = document.getElementById('dynamic-container');
+      const div = document.createElement('div');
+      div.style.marginTop = '10px';
+      div.innerHTML = `
+        <label style="font-size:12px; font-weight:600; display:block; margin-bottom:4px;">Dynamically Created Textarea:</label>
+        <textarea id="dynamic-textarea" style="min-height:70px;">Now this is dynamically created! They are active.</textarea>
+      `;
+      container.appendChild(div);
+    });
+  </script>
+</body>
+</html>
