@@ -216,6 +216,31 @@ async function runTest() {
   );
   console.log('[PASS] Clicking highlighted "is" replaces with "was" while preserving surrounding text.');
 
+  // Instant hover floating tooltip check
+  console.log('[Tooltip] Testing instant hover floating tooltip...');
+  const tooltipTest = await evalInPage(`
+    (() => {
+      const host = document.getElementById('is-highlighter-extension-root');
+      const marks = Array.from(host.shadowRoot.querySelectorAll('mark.is-highlight-word'));
+      const tooltip = host.shadowRoot.querySelector('.is-floating-tooltip');
+      if (!tooltip || !marks.length) return { exists: false };
+
+      const firstMark = marks[0];
+      firstMark.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }));
+      const visibleOnHover = tooltip.style.display !== 'none' && tooltip.textContent.includes('Click to replace');
+      const text = tooltip.textContent;
+
+      firstMark.dispatchEvent(new MouseEvent('mouseleave', { bubbles: true }));
+      const hiddenOnLeave = tooltip.style.display === 'none';
+
+      return { exists: true, visibleOnHover, hiddenOnLeave, text };
+    })()
+  `);
+  assert.strictEqual(tooltipTest.exists, true, 'Floating tooltip must exist in shadow root');
+  assert.strictEqual(tooltipTest.visibleOnHover, true, 'Floating tooltip must be visible on hover');
+  assert.strictEqual(tooltipTest.hiddenOnLeave, true, 'Floating tooltip must hide on mouse leave');
+  console.log('[PASS] Instant hover floating tooltip displays correctly without delay.');
+
   // 8. Verify quick replacement on plural textarea ("are" -> "were")
   const areTextareaBefore = await evalInPage(`document.getElementById('textarea-are').value`);
   console.log('[Are Textarea Before]:', areTextareaBefore);

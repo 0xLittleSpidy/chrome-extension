@@ -14,6 +14,7 @@
   let isEnabledOnThisPage = false;
   let shadowRoot = null;
   let hostElement = null;
+  let floatingTooltip = null;
   let resizeObserver = null;
   let mutationObserver = null;
   let lastKnownUrl = window.location.href;
@@ -62,8 +63,50 @@
     link.href = chrome.runtime.getURL('content/content.css');
     shadowRoot.appendChild(link);
 
+    // Create shared instant floating tooltip attached directly to shadowRoot (avoids overflow clipping)
+    floatingTooltip = document.createElement('div');
+    floatingTooltip.className = 'is-floating-tooltip';
+    floatingTooltip.style.display = 'none';
+    shadowRoot.appendChild(floatingTooltip);
+
     const targetContainer = document.body || document.documentElement;
     targetContainer.appendChild(hostElement);
+  }
+
+  /**
+   * Displays the floating tooltip immediately above the specified mark without clipping.
+   */
+  function showFloatingTooltip(mark, replacementWord) {
+    if (!floatingTooltip || !isEnabledOnThisPage) return;
+    floatingTooltip.textContent = `Click to replace with '${replacementWord}'`;
+    floatingTooltip.style.display = 'block';
+
+    const markRect = mark.getBoundingClientRect();
+    const tooltipRect = floatingTooltip.getBoundingClientRect();
+
+    // Position centered above the mark; flip below if too close to viewport top
+    let top = markRect.top - tooltipRect.height - 6;
+    if (top < 4) {
+      top = markRect.bottom + 6;
+    }
+
+    let left = markRect.left + (markRect.width / 2) - (tooltipRect.width / 2);
+    if (left < 6) left = 6;
+    const maxLeft = window.innerWidth - tooltipRect.width - 6;
+    if (left > maxLeft) left = maxLeft;
+
+    floatingTooltip.style.top = `${top}px`;
+    floatingTooltip.style.left = `${left}px`;
+    floatingTooltip.classList.add('is-tooltip-visible');
+  }
+
+  /**
+   * Hides the floating tooltip immediately.
+   */
+  function hideFloatingTooltip() {
+    if (!floatingTooltip) return;
+    floatingTooltip.classList.remove('is-tooltip-visible');
+    floatingTooltip.style.display = 'none';
   }
 
   /**
@@ -146,6 +189,9 @@
       removeElementListeners(el, record);
     }
     trackedElements.clear();
+
+    hideFloatingTooltip();
+    floatingTooltip = null;
 
     if (hostElement && hostElement.parentNode) {
       hostElement.remove();
@@ -476,10 +522,19 @@
         e.preventDefault();
       });
 
+      // Show/hide instant unclipped floating tooltip on hover
+      mark.addEventListener('mouseenter', () => {
+        showFloatingTooltip(mark, match.replacement);
+      });
+      mark.addEventListener('mouseleave', () => {
+        hideFloatingTooltip();
+      });
+
       // Quick replacement on click
       mark.addEventListener('click', (e) => {
         e.preventDefault();
         e.stopPropagation();
+        hideFloatingTooltip();
         handleWordReplacement(element, match.start, match.end);
       });
 
@@ -519,6 +574,7 @@
    * Handles replacement of "is" / "are" with "was" / "were" at specified index.
    */
   function handleWordReplacement(element, start, end) {
+    hideFloatingTooltip();
     const currentText = getElementText(element);
 
     // Verify word at target position
@@ -567,6 +623,7 @@
    */
   function handleGlobalScroll() {
     if (!isEnabledOnThisPage) return;
+    hideFloatingTooltip();
     for (const [el, record] of trackedElements.entries()) {
       if (record.overlay && record.overlay.style.display !== 'none') {
         syncOverlayStylesAndPosition(el, record.overlay);
@@ -577,6 +634,7 @@
 
   function handleGlobalResize() {
     if (!isEnabledOnThisPage) return;
+    hideFloatingTooltip();
     for (const [el] of trackedElements.entries()) {
       updateOverlayForElement(el);
     }
