@@ -294,7 +294,22 @@ async function runTest() {
   assert(valAfterARE.includes('Who WERE they?'), '"ARE" must be replaced with "WERE"');
   console.log('[PASS] Case preservation ("Is" -> "Was", "IS" -> "WAS", "Are" -> "Were", "ARE" -> "WERE") works accurately.');
 
-  // 10. Test dynamically created text fields (MutationObserver)
+  // 10. Test contenteditable support
+  console.log('[Contenteditable] Testing replacement on contenteditable element...');
+  await evalInPage(`
+    (() => {
+      const host = document.getElementById('is-highlighter-extension-root');
+      const marks = Array.from(host.shadowRoot.querySelectorAll('mark.is-highlight-word'));
+      const ceMark = marks.find(m => m.dataset.elementId === 'editable-div' && m.textContent === 'is');
+      if (ceMark) ceMark.click();
+    })()
+  `);
+  await new Promise(r => setTimeout(r, 200));
+  const ceTextAfter = await evalInPage(`document.getElementById('editable-div').innerText`);
+  assert(ceTextAfter.includes('Contenteditable text was supported.'), 'Contenteditable "is" must be replaced with "was"');
+  console.log('[PASS] Contenteditable elements are supported and replaced seamlessly.');
+
+  // 11. Test dynamically created text fields (MutationObserver)
   console.log('[Dynamic Test] Creating new textarea dynamically via button click...');
   await evalInPage(`document.getElementById('add-dynamic-btn').click()`);
   await new Promise(r => setTimeout(r, 500));
@@ -308,14 +323,9 @@ async function runTest() {
       const host = document.getElementById('is-highlighter-extension-root');
       const marks = Array.from(host.shadowRoot.querySelectorAll('mark.is-highlight-word'));
       // Find mark corresponding to "are" in dynamic textarea: "They are active."
-      const dynAreMark = marks.find(m => {
-        const text = m.parentElement ? m.parentElement.textContent : '';
-        return text.includes('They are active') && m.textContent === 'are';
-      });
+      const dynAreMark = marks.find(m => m.dataset.elementId === 'dynamic-textarea' && m.textContent === 'are');
       if (dynAreMark) {
         dynAreMark.click();
-      } else {
-        marks[marks.length - 1].click();
       }
       return document.getElementById('dynamic-textarea').value;
     })()

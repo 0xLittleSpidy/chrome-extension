@@ -1,7 +1,8 @@
 /**
- * Content Script for Is-to-Was Replacer.
- * Scans textboxes and input fields on allowlisted websites for sentences containing "is",
- * highlights the word in yellow with an underline, and enables one-click replacement to "was".
+ * Content Script for Is & Are Replacer.
+ * Scans textboxes, input fields, and contenteditable elements on allowlisted websites
+ * for sentences containing "is" or "are", highlights them in yellow with an underline,
+ * and enables one-click replacement to "was" or "were".
  */
 (function () {
   'use strict';
@@ -9,13 +10,13 @@
   // Prevent double injection
   if (window.__isToWasReplacerInjected) return;
   window.__isToWasReplacerInjected = true;
-  console.log('[Is-to-Was] Content script loaded on:', window.location.href);
 
   let isEnabledOnThisPage = false;
   let shadowRoot = null;
   let hostElement = null;
   let resizeObserver = null;
   let mutationObserver = null;
+  let lastKnownUrl = window.location.href;
 
   // Tracked inputs and their overlays: Map<HTMLElement, OverlayRecord>
   const trackedElements = new Map();
@@ -39,19 +40,19 @@
         deactivateExtension();
       }
     } catch (err) {
-      console.warn('[Is-to-Was] Failed to check allowlist:', err);
+      console.warn('[Is & Are Replacer] Failed to check allowlist:', err);
     }
   }
 
   /**
-   * Sets up the overlay host in Shadow DOM.
+   * Sets up the overlay host in Shadow DOM using viewport-fixed positioning.
    */
   function setupShadowRoot() {
     if (hostElement && shadowRoot) return;
 
     hostElement = document.createElement('div');
     hostElement.id = 'is-highlighter-extension-root';
-    hostElement.style.cssText = 'position: absolute; top: 0; left: 0; width: 0; height: 0; pointer-events: none; z-index: 2147483640;';
+    hostElement.style.cssText = 'position: fixed; top: 0; left: 0; width: 0; height: 0; pointer-events: none; z-index: 2147483640;';
 
     shadowRoot = hostElement.attachShadow({ mode: 'open' });
 
@@ -82,7 +83,7 @@
       }
     });
 
-    // Scan existing fields in DOM
+    // Scan existing fields in DOM (including open Shadow Roots)
     scanAllFields();
 
     // Observe dynamically added fields
@@ -106,9 +107,13 @@
       subtree: true
     });
 
-    // Window event listeners for position and scroll tracking
+    // Window and document event listeners for position and typing updates
     window.addEventListener('scroll', handleGlobalScroll, { capture: true, passive: true });
     window.addEventListener('resize', handleGlobalResize, { passive: true });
+    document.addEventListener('input', handleGlobalInputEvent, { capture: true, passive: true });
+    document.addEventListener('keyup', handleGlobalInputEvent, { capture: true, passive: true });
+    document.addEventListener('change', handleGlobalInputEvent, { capture: true, passive: true });
+    document.addEventListener('focusin', handleGlobalInputEvent, { capture: true, passive: true });
   }
 
   /**
@@ -128,6 +133,10 @@
 
     window.removeEventListener('scroll', handleGlobalScroll, true);
     window.removeEventListener('resize', handleGlobalResize);
+    document.removeEventListener('input', handleGlobalInputEvent, true);
+    document.removeEventListener('keyup', handleGlobalInputEvent, true);
+    document.removeEventListener('change', handleGlobalInputEvent, true);
+    document.removeEventListener('focusin', handleGlobalInputEvent, true);
 
     // Remove all overlays
     for (const [el, record] of trackedElements.entries()) {
@@ -146,7 +155,7 @@
   }
 
   /**
-   * Determines if an element is a valid text field.
+   * Determines if an element is a valid text field or editable area.
    */
   function isValidTextField(el) {
     if (!el || !(el instanceof HTMLElement)) return false;
@@ -161,18 +170,53 @@
       return SUPPORTED_INPUT_TYPES.has(type) && !el.disabled && !el.readOnly;
     }
 
+    if (el.isContentEditable || el.getAttribute('contenteditable') === 'true' || el.getAttribute('contenteditable') === '') {
+      return true;
+    }
+
     return false;
+  }
+
+  /**
+   * Gets text from an input, textarea, or contenteditable element.
+   */
+  function getElementText(el) {
+    if (!el) return '';
+    if (el.isContentEditable) {
+      return el.innerText || el.textContent || '';
+    }
+    return el.value || '';
+  }
+
+  /**
+   * Traverses a root element and recursively inspects child nodes and open Shadow Roots.
+   */
+  function findAllFieldsDeep(root) {
+    const fields = [];
+    function traverse(node) {
+      if (!node) return;
+      if (node !== root && isValidTextField(node)) {
+        fields.push(node);
+      }
+      if (node.shadowRoot) {
+        traverse(node.shadowRoot);
+      }
+      const children = node.children || [];
+      for (let i = 0; i < children.length; i++) {
+        traverse(children[i]);
+      }
+    }
+    traverse(root);
+    return fields;
   }
 
   /**
    * Scans document for all valid text fields.
    */
   function scanAllFields() {
-    const candidates = document.querySelectorAll('textarea, input');
-    candidates.forEach((el) => {
-      if (isValidTextField(el)) {
-        registerField(el);
-      }
+    const fields = findAllFieldsDeep(document.body || document.documentElement);
+    fields.forEach((el) => {
+      registerField(el);
     });
   }
 
@@ -183,14 +227,10 @@
     if (isValidTextField(root)) {
       registerField(root);
     }
-    if (root.querySelectorAll) {
-      const descendants = root.querySelectorAll('textarea, input');
-      descendants.forEach((el) => {
-        if (isValidTextField(el)) {
-          registerField(el);
-        }
-      });
-    }
+    const descendants = findAllFieldsDeep(root);
+    descendants.forEach((el) => {
+      registerField(el);
+    });
   }
 
   /**
@@ -200,35 +240,33 @@
     if (trackedElements.has(root)) {
       unregisterField(root);
     }
-    if (root.querySelectorAll) {
-      const descendants = root.querySelectorAll('textarea, input');
-      descendants.forEach((el) => {
-        if (trackedElements.has(el)) {
-          unregisterField(el);
-        }
-      });
+    for (const [el] of trackedElements) {
+      if (!document.contains(el)) {
+        unregisterField(el);
+      }
     }
   }
 
   /**
-   * Registers and attaches listeners to an input or textarea element.
+   * Registers and attaches listeners to an input, textarea, or contenteditable element.
    */
   function registerField(element) {
     if (trackedElements.has(element)) return;
 
-    const onInput = () => updateOverlayForElement(element);
+    const onUpdate = () => updateOverlayForElement(element);
     const onScroll = () => syncScroll(element);
-    const onFocus = () => updateOverlayForElement(element);
 
-    element.addEventListener('input', onInput);
+    element.addEventListener('input', onUpdate);
+    element.addEventListener('keyup', onUpdate);
+    element.addEventListener('change', onUpdate);
+    element.addEventListener('paste', onUpdate);
+    element.addEventListener('focus', onUpdate);
     element.addEventListener('scroll', onScroll, { passive: true });
-    element.addEventListener('focus', onFocus);
 
     const record = {
       overlay: null,
-      onInput,
-      onScroll,
-      onFocus
+      onUpdate,
+      onScroll
     };
 
     trackedElements.set(element, record);
@@ -259,9 +297,28 @@
   }
 
   function removeElementListeners(element, record) {
-    element.removeEventListener('input', record.onInput);
+    element.removeEventListener('input', record.onUpdate);
+    element.removeEventListener('keyup', record.onUpdate);
+    element.removeEventListener('change', record.onUpdate);
+    element.removeEventListener('paste', record.onUpdate);
+    element.removeEventListener('focus', record.onUpdate);
     element.removeEventListener('scroll', record.onScroll);
-    element.removeEventListener('focus', record.onFocus);
+  }
+
+  /**
+   * Global capture listener ensuring modern frameworks (Material UI, React, etc.)
+   * trigger overlay updates even if bubbling is intercepted.
+   */
+  function handleGlobalInputEvent(e) {
+    if (!isEnabledOnThisPage) return;
+    const target = e.target;
+    if (isValidTextField(target)) {
+      if (!trackedElements.has(target)) {
+        registerField(target);
+      } else {
+        updateOverlayForElement(target);
+      }
+    }
   }
 
   /**
@@ -301,7 +358,7 @@
       return;
     }
 
-    const text = element.value || '';
+    const text = getElementText(element);
     const scanResult = TextScanner.scanText(text);
 
     if (!scanResult.hasMatches) {
@@ -320,10 +377,11 @@
     }
 
     const overlay = record.overlay;
-    overlay.style.display = 'block';
 
-    // Copy computed styles and positioning
+    // Copy computed styles and viewport-based positioning
     syncOverlayStylesAndPosition(element, overlay);
+
+    overlay.style.display = 'block';
 
     // Build highlight DOM contents
     renderOverlayContent(element, overlay, text, scanResult);
@@ -334,17 +392,16 @@
   }
 
   /**
-   * Copies relevant layout and typography styles from element to overlay.
+   * Copies relevant layout and typography styles from element to overlay using viewport coordinates.
    */
   function syncOverlayStylesAndPosition(element, overlay) {
     const rect = element.getBoundingClientRect();
-    const scrollX = window.scrollX || window.pageXOffset;
-    const scrollY = window.scrollY || window.pageYOffset;
     const computed = window.getComputedStyle(element);
-    const isTextArea = element.tagName.toLowerCase() === 'textarea';
+    const isMultiLine = element.tagName.toLowerCase() === 'textarea' || element.isContentEditable;
 
-    overlay.style.top = `${rect.top + scrollY}px`;
-    overlay.style.left = `${rect.left + scrollX}px`;
+    // Viewport-relative positioning
+    overlay.style.top = `${rect.top}px`;
+    overlay.style.left = `${rect.left}px`;
     overlay.style.width = `${rect.width}px`;
     overlay.style.height = `${rect.height}px`;
 
@@ -375,7 +432,7 @@
     overlay.style.direction = computed.direction;
 
     // Text wrapping
-    if (isTextArea) {
+    if (isMultiLine) {
       overlay.style.whiteSpace = 'pre-wrap';
       overlay.style.wordBreak = 'break-word';
       overlay.style.overflowWrap = 'break-word';
@@ -384,10 +441,12 @@
       overlay.style.wordBreak = 'normal';
       overlay.style.overflowWrap = 'normal';
     }
+
+    return true;
   }
 
   /**
-   * Renders the mirrored transparent text with underlined yellow marks for "is".
+   * Renders the mirrored transparent text with underlined yellow marks for "is" or "are".
    */
   function renderOverlayContent(element, overlay, text, scanResult) {
     overlay.innerHTML = '';
@@ -408,9 +467,8 @@
       mark.dataset.end = String(match.end);
       mark.dataset.word = match.word;
       mark.dataset.replacement = match.replacement;
-      const tooltipMsg = `Click to replace with '${match.replacement}'`;
-      mark.title = tooltipMsg;
-      mark.setAttribute('data-tooltip', tooltipMsg);
+      mark.dataset.elementId = element.id || '';
+      mark.title = `Click to replace with '${match.replacement}'`;
       mark.appendChild(document.createTextNode(match.word));
 
       // Prevent losing focus on mousedown
@@ -441,6 +499,11 @@
    * Sets value on input/textarea using prototype descriptor so reactive frameworks detect it.
    */
   function setNativeValue(element, value) {
+    if (element.isContentEditable) {
+      element.innerText = value;
+      return;
+    }
+
     const isTextArea = element.tagName.toLowerCase() === 'textarea';
     const prototype = isTextArea ? window.HTMLTextAreaElement.prototype : window.HTMLInputElement.prototype;
     const descriptor = Object.getOwnPropertyDescriptor(prototype, 'value');
@@ -456,7 +519,7 @@
    * Handles replacement of "is" / "are" with "was" / "were" at specified index.
    */
   function handleWordReplacement(element, start, end) {
-    const currentText = element.value || '';
+    const currentText = getElementText(element);
 
     // Verify word at target position
     let targetStart = start;
@@ -517,6 +580,40 @@
     for (const [el] of trackedElements.entries()) {
       updateOverlayForElement(el);
     }
+  }
+
+  /**
+   * SPA Navigation tracking (React Router, Next.js, Angular, etc.)
+   */
+  function checkUrlChange() {
+    if (window.location.href !== lastKnownUrl) {
+      lastKnownUrl = window.location.href;
+      checkAllowlistAndInitialize();
+      if (isEnabledOnThisPage) {
+        scanAllFields();
+      }
+    }
+  }
+
+  window.addEventListener('popstate', checkUrlChange);
+  window.addEventListener('hashchange', checkUrlChange);
+
+  const originalPushState = history.pushState;
+  if (originalPushState) {
+    history.pushState = function (...args) {
+      const result = originalPushState.apply(this, args);
+      checkUrlChange();
+      return result;
+    };
+  }
+
+  const originalReplaceState = history.replaceState;
+  if (originalReplaceState) {
+    history.replaceState = function (...args) {
+      const result = originalReplaceState.apply(this, args);
+      checkUrlChange();
+      return result;
+    };
   }
 
   // React to storage changes in real time (e.g. user toggled allowlist in popup)
