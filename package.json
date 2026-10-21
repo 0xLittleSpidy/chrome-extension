@@ -1,22 +1,14 @@
 {
-  "name": "helper-chrome-extension",
+  "name": "chrome-extension-root",
   "version": "2.0.0",
-  "description": "Chrome Extension for text replacement, snippet clipboard storage, and domain management.",
+  "description": "Helper Chrome Extension workspace root",
   "scripts": {
-    "test:unit": "node test/unit.test.js",
-    "test:popup": "node test/popup.test.js",
-    "test:settings": "node test/settings.test.js",
-    "test:integration": "node test/integration.test.js",
-    "test": "node test/unit.test.js && node test/popup.test.js && node test/settings.test.js && node test/integration.test.js"
+    "test": "cd helper && npm test",
+    "test:unit": "cd helper && npm run test:unit",
+    "test:popup": "cd helper && npm run test:popup",
+    "test:settings": "cd helper && npm run test:settings",
+    "test:integration": "cd helper && npm run test:integration"
   },
-  "keywords": [
-    "chrome-extension",
-    "manifest-v3",
-    "text-replacement",
-    "snippets",
-    "clipboard",
-    "helper"
-  ],
   "author": "Antigravity",
   "license": "MIT"
 }

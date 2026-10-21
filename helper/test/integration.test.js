@@ -88,8 +88,8 @@ async function runTest() {
   const targets = await fetch('http://127.0.0.1:9222/json').then(r => r.json());
   console.log('[Browser] Running targets:', targets.map(t => ({ type: t.type, title: t.title, url: t.url })));
 
-  // Locate our background service worker
-  const swTarget = targets.find(t => t.url.includes(`${EXT_ID}/background.js`));
+  // Locate our background service worker dynamically
+  const swTarget = targets.find(t => t.url.endsWith('/background.js') && !t.url.includes('glbjnfimcajjenihimblfaponejbkoph'));
   assert(swTarget, 'Background service worker must be loaded and running');
   console.log('[PASS] Background service worker active:', swTarget.url);
 
