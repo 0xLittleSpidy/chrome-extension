@@ -19,9 +19,17 @@
           <p class="subtitle">Productivity & Text Assistant</p>
         </div>
       </div>
-      <div id="site-status-badge" class="status-badge badge-inactive">
-        <span class="status-dot"></span>
-        <span id="site-status-text">Inactive</span>
+      <div class="header-actions">
+        <div id="site-status-badge" class="status-badge badge-inactive">
+          <span class="status-dot"></span>
+          <span id="site-status-text">Inactive</span>
+        </div>
+        <button id="open-settings-btn" class="icon-btn-settings" title="Settings" aria-label="Open Settings">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="3"></circle>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+          </svg>
+        </button>
       </div>
     </header>
 
@@ -80,25 +88,6 @@
         <p class="empty-desc">No snippets saved yet. Add snippets in Settings.</p>
       </div>
     </section>
-
-    <!-- Settings Quick Action Card -->
-    <section class="card quick-settings-card">
-      <div class="card-header-flex">
-        <span class="section-label">Configuration Center</span>
-        <button id="open-settings-btn" class="btn btn-secondary btn-sm">Open Settings</button>
-      </div>
-      <p class="quick-settings-desc">Manage whitelist, custom replacer rules, and import/export.</p>
-    </section>
-
-    <!-- Quick Help / Summary -->
-    <footer class="footer">
-      <div class="tip-box">
-        <svg class="tip-icon-svg" width="14" height="14" viewBox="0 0 20 20" fill="#a16207">
-          <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"/>
-        </svg>
-        <p class="tip-text">Right-click anywhere on page to copy saved snippets or use copy buttons above.</p>
-      </div>
-    </footer>
   </div>
 
   <script src="../lib/allowlist-utils.js"></script>
