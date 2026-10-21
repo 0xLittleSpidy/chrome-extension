@@ -1,6 +1,7 @@
 const assert = require('assert');
 const TextScanner = require('../lib/text-scanner');
 const AllowlistUtils = require('../lib/allowlist-utils');
+const StorageManager = require('../lib/storage-manager');
 
 console.log('--- RUNNING UNIT TESTS ---');
 
@@ -108,4 +109,123 @@ console.log('--- RUNNING UNIT TESTS ---');
   assert.strictEqual(AllowlistUtils.normalizePattern('  EXAMPLE.ORG/  '), 'example.org');
 }
 
-console.log('[PASS] ALL UNIT TESTS PASSED!');
+// 7. Test Dynamic User-Configured Rules in TextScanner
+{
+  const customRules = [
+    { id: 'rule-fast-slow', find: 'fast', replace: 'slow', matchCase: true, wholeWord: true },
+    { id: 'rule-quick-steady', find: 'quick', replace: 'steady', matchCase: true, wholeWord: true }
+  ];
+
+  const text = 'The FAST runner was quick to stop. Breakfast is not fast food.';
+  const res = TextScanner.scanTextWithRules(text, customRules);
+
+  assert.strictEqual(res.hasMatches, true);
+  assert.strictEqual(res.allMatches.length, 3);
+
+  // Match 1: "FAST" -> "SLOW" (case preservation uppercase)
+  assert.strictEqual(res.allMatches[0].word, 'FAST');
+  assert.strictEqual(res.allMatches[0].replacement, 'SLOW');
+
+  // Match 2: "quick" -> "steady"
+  assert.strictEqual(res.allMatches[1].word, 'quick');
+  assert.strictEqual(res.allMatches[1].replacement, 'steady');
+
+  // Match 3: "fast" -> "slow"
+  assert.strictEqual(res.allMatches[2].word, 'fast');
+  assert.strictEqual(res.allMatches[2].replacement, 'slow');
+
+  // Verify "Breakfast" does NOT match "fast" because of wholeWord: true
+  const breakfastText = 'We eat breakfast every morning.';
+  const bfRes = TextScanner.scanTextWithRules(breakfastText, customRules);
+  assert.strictEqual(bfRes.hasMatches, false);
+
+  // Test substring rule with wholeWord: false
+  const substringRules = [
+    { id: 'rule-foo-bar', find: 'foo', replace: 'bar', matchCase: false, wholeWord: false }
+  ];
+  const subRes = TextScanner.scanTextWithRules('Good seafood is fresh.', substringRules);
+  assert.strictEqual(subRes.hasMatches, true);
+  assert.strictEqual(subRes.allMatches[0].word, 'foo');
+}
+
+// 8. Test StorageManager JSON Import / Export Validation
+(async () => {
+  // Test export structure
+  const exportPayload = {
+    version: 1,
+    appName: 'Helper',
+    exportedAt: new Date().toISOString(),
+    allowlist: ['example.com', 'test.org'],
+    snippets: [
+      { id: 's1', heading: 'Email Signature', description: 'Best regards,\nUser', updatedAt: 12345 }
+    ],
+    replacer_rules: [
+      { id: 'r1', find: 'cat', replace: 'dog', matchCase: true, wholeWord: true }
+    ]
+  };
+
+  // Mock chrome.storage for Node environment test
+  const storageStore = {};
+  global.chrome = {
+    storage: {
+      sync: {
+        get: async (keys) => {
+          const res = {};
+          for (const k of keys) {
+            if (storageStore[k] !== undefined) res[k] = storageStore[k];
+          }
+          return res;
+        },
+        set: async (obj) => {
+          Object.assign(storageStore, obj);
+        }
+      }
+    }
+  };
+
+  // Test import valid config
+  await StorageManager.importConfiguration(JSON.stringify(exportPayload));
+  const importedList = await StorageManager.getAllowlist();
+  assert.deepStrictEqual(importedList, ['example.com', 'test.org']);
+
+  const importedSnippets = await StorageManager.getSnippets();
+  assert.strictEqual(importedSnippets.length, 1);
+  assert.strictEqual(importedSnippets[0].heading, 'Email Signature');
+
+  const importedRules = await StorageManager.getReplacerRules();
+  assert.strictEqual(importedRules.length, 1);
+  assert.strictEqual(importedRules[0].find, 'cat');
+
+  // Test invalid import payloads
+  await assert.rejects(
+    async () => StorageManager.importConfiguration('INVALID JSON STRING'),
+    /Invalid JSON format/
+  );
+
+  await assert.rejects(
+    async () => StorageManager.importConfiguration(JSON.stringify({})),
+    /No valid settings, snippets, or rules found/
+  );
+
+  // Test Snippets CRUD
+  await StorageManager.saveSnippet({ heading: 'Test Heading', description: 'Test Content' });
+  let snips = await StorageManager.getSnippets();
+  assert.strictEqual(snips.length, 2);
+  const createdSnippet = snips.find(s => s.heading === 'Test Heading');
+  assert.ok(createdSnippet);
+
+  await StorageManager.deleteSnippet(createdSnippet.id);
+  snips = await StorageManager.getSnippets();
+  assert.strictEqual(snips.length, 1);
+
+  // Test Per-Site Replacer & Storage Switches
+  assert.strictEqual(await StorageManager.getSiteReplacerEnabled('example.com'), true);
+  await StorageManager.setSiteReplacerEnabled('example.com', false);
+  assert.strictEqual(await StorageManager.getSiteReplacerEnabled('example.com'), false);
+
+  assert.strictEqual(await StorageManager.getSiteStorageEnabled('example.com'), true);
+  await StorageManager.setSiteStorageEnabled('example.com', false);
+  assert.strictEqual(await StorageManager.getSiteStorageEnabled('example.com'), false);
+
+  console.log('[PASS] ALL UNIT TESTS PASSED!');
+})();

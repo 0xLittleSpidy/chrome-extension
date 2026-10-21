@@ -359,7 +359,86 @@ async function runTest() {
   assert(dynamicReplacement.includes('They were active.'), 'Dynamic field "are" must be replaced with "were"');
   console.log('[PASS] Dynamically created text fields are automatically detected and supported.');
 
-  // 11. Test allowlist removal deactivation
+  // 12. Test Active Site Replacer Switch (pause replacer without removing from whitelist)
+  console.log('[Per-Site Switch] Pausing replacer on 127.0.0.1:' + PORT + '...');
+  await evalInSW(`
+    new Promise(resolve => {
+      chrome.storage.sync.set({ site_replacer_state: { '127.0.0.1:${PORT}': false } }, resolve);
+    })
+  `);
+  await new Promise(r => setTimeout(r, 600));
+
+  const hostWhenPaused = await evalInPage(`!!document.getElementById('is-highlighter-extension-root')`);
+  assert.strictEqual(hostWhenPaused, false, 'Overlays must be deactivated when replacer switch is OFF on active site');
+  console.log('[PASS] Replacer switch temporarily deactivates overlays on whitelisted site.');
+
+  // Re-enable replacer switch on active site
+  console.log('[Per-Site Switch] Re-enabling replacer on 127.0.0.1:' + PORT + '...');
+  await evalInSW(`
+    new Promise(resolve => {
+      chrome.storage.sync.set({ site_replacer_state: { '127.0.0.1:${PORT}': true } }, resolve);
+    })
+  `);
+  await new Promise(r => setTimeout(r, 600));
+
+  const hostWhenResumed = await evalInPage(`!!document.getElementById('is-highlighter-extension-root')`);
+  assert.strictEqual(hostWhenResumed, true, 'Overlays must be restored when replacer switch is ON');
+  console.log('[PASS] Replacer switch resumes overlays instantly without removing domain from whitelist.');
+
+  // 13. Test Dynamic Replacer Rules
+  console.log('[Dynamic Rules] Adding custom replacement rule: "beautiful" -> "wonderful"...');
+  await evalInSW(`
+    new Promise(resolve => {
+      chrome.storage.sync.set({
+        replacer_rules: [
+          { id: 'rule-default-is-was', find: 'is', replace: 'was', matchCase: true, wholeWord: true },
+          { id: 'rule-default-are-were', find: 'are', replace: 'were', matchCase: true, wholeWord: true },
+          { id: 'rule-custom-beautiful', find: 'beautiful', replace: 'wonderful', matchCase: true, wholeWord: true }
+        ]
+      }, resolve);
+    })
+  `);
+  await new Promise(r => setTimeout(r, 600));
+
+  // Verify "beautiful" is highlighted in textarea-standard and clicking it replaces with "wonderful"
+  const dynamicRuleClick = await evalInPage(`
+    (() => {
+      const host = document.getElementById('is-highlighter-extension-root');
+      if (!host || !host.shadowRoot) return { success: false, reason: 'no-host' };
+      const marks = Array.from(host.shadowRoot.querySelectorAll('mark.is-highlight-word'));
+      const beautifulMark = marks.find(m => m.textContent === 'beautiful');
+      if (!beautifulMark) return { success: false, reason: 'mark-not-found', words: marks.map(m => m.textContent) };
+      beautifulMark.click();
+      return {
+        success: true,
+        val: document.getElementById('textarea-standard').value
+      };
+    })()
+  `);
+  assert.strictEqual(dynamicRuleClick.success, true, 'Custom rule mark "beautiful" must be detected and clickable');
+  assert(dynamicRuleClick.val.includes('wonderful'), 'Custom replacement must replace "beautiful" with "wonderful"');
+  console.log('[PASS] Dynamic user-configured rules highlight and replace text successfully.');
+
+  // 14. Test Snippet Storage & Offscreen Clipboard Setup
+  console.log('[Snippets] Saving snippet in storage...');
+  await evalInSW(`
+    new Promise(resolve => {
+      chrome.storage.sync.set({
+        snippets: [{ id: 'snip-test-1', heading: 'Quick Intro', description: 'Hello world from Helper snippet!' }]
+      }, resolve);
+    })
+  `);
+  await new Promise(r => setTimeout(r, 400));
+  const snippetData = await evalInSW(`
+    new Promise(resolve => {
+      chrome.storage.sync.get(['snippets'], (res) => resolve(res.snippets));
+    })
+  `);
+  assert.strictEqual(snippetData.length, 1);
+  assert.strictEqual(snippetData[0].heading, 'Quick Intro');
+  console.log('[PASS] Snippets stored persistently in extension storage.');
+
+  // 15. Test allowlist removal deactivation
   console.log('[Allowlist] Removing site from allowlist in storage...');
   await evalInSW(`
     new Promise(resolve => {

@@ -12,6 +12,7 @@
   window.__isToWasReplacerInjected = true;
 
   let isEnabledOnThisPage = false;
+  let activeRules = [];
   let shadowRoot = null;
   let hostElement = null;
   let floatingTooltip = null;
@@ -28,20 +29,35 @@
   const SUPPORTED_INPUT_TYPES = new Set(['text', 'search', 'url', 'email', 'tel', '']);
 
   /**
-   * Initializes or tears down the extension on this page based on allowlist status.
+   * Initializes or tears down the extension on this page based on whitelist
+   * and per-site replacer switch status.
    */
   async function checkAllowlistAndInitialize() {
     try {
-      const { allowlist = [] } = await chrome.storage.sync.get(['allowlist']);
-      const allowed = AllowlistUtils.isUrlAllowed(window.location.href, allowlist);
+      const data = await chrome.storage.sync.get(['allowlist', 'site_replacer_state', 'replacer_rules']);
+      const allowlist = Array.isArray(data.allowlist) ? data.allowlist : [];
+      const siteReplacerState = data.site_replacer_state || {};
 
-      if (allowed && !isEnabledOnThisPage) {
+      activeRules = Array.isArray(data.replacer_rules) && data.replacer_rules.length > 0
+        ? data.replacer_rules
+        : (typeof TextScanner !== 'undefined' && TextScanner.DEFAULT_RULES ? TextScanner.DEFAULT_RULES : []);
+
+      const allowed = AllowlistUtils.isUrlAllowed(window.location.href, allowlist);
+      const domain = AllowlistUtils.getSiteIdentifier(window.location.href);
+      const replacerEnabledOnSite = siteReplacerState[domain] !== false;
+
+      const shouldBeActive = Boolean(allowed && replacerEnabledOnSite);
+
+      if (shouldBeActive && !isEnabledOnThisPage) {
         activateExtension();
-      } else if (!allowed && isEnabledOnThisPage) {
+      } else if (!shouldBeActive && isEnabledOnThisPage) {
         deactivateExtension();
+      } else if (shouldBeActive && isEnabledOnThisPage) {
+        // Refresh overlays if rules or status changed
+        scanAllFields();
       }
     } catch (err) {
-      console.warn('[Is & Are Replacer] Failed to check allowlist:', err);
+      console.warn('[Helper] Failed to check status:', err);
     }
   }
 
@@ -257,13 +273,17 @@
   }
 
   /**
-   * Scans document for all valid text fields.
+   * Scans document for all valid text fields and updates overlays.
    */
   function scanAllFields() {
     const fields = findAllFieldsDeep(document.body || document.documentElement);
     fields.forEach((el) => {
       registerField(el);
     });
+
+    for (const el of trackedElements.keys()) {
+      updateOverlayForElement(el);
+    }
   }
 
   /**
@@ -405,7 +425,7 @@
     }
 
     const text = getElementText(element);
-    const scanResult = TextScanner.scanText(text);
+    const scanResult = TextScanner.scanTextWithRules(text, activeRules);
 
     if (!scanResult.hasMatches) {
       if (record.overlay) {
@@ -535,7 +555,7 @@
         e.preventDefault();
         e.stopPropagation();
         hideFloatingTooltip();
-        handleWordReplacement(element, match.start, match.end);
+        handleWordReplacement(element, match.start, match.end, match.replacement);
       });
 
       fragment.appendChild(mark);
@@ -571,31 +591,31 @@
   }
 
   /**
-   * Handles replacement of "is" / "are" with "was" / "were" at specified index.
+   * Handles replacement of targeted word at specified index.
    */
-  function handleWordReplacement(element, start, end) {
+  function handleWordReplacement(element, start, end, targetReplacement) {
     hideFloatingTooltip();
     const currentText = getElementText(element);
 
-    // Verify word at target position
     let targetStart = start;
     let targetEnd = end;
-    const targetSlice = currentText.substring(targetStart, targetEnd);
+    let replacement = targetReplacement;
 
-    if (!['is', 'are'].includes(targetSlice.toLowerCase())) {
-      // If text shifted slightly due to typing, re-scan to locate matching word
-      const res = TextScanner.scanText(currentText);
-      const closest = res.allMatches.find((m) => Math.abs(m.start - start) < 10);
-      if (closest) {
-        targetStart = closest.start;
-        targetEnd = closest.end;
-      } else {
-        updateOverlayForElement(element);
-        return;
+    // Verify word at target position or find closest match
+    const res = TextScanner.scanTextWithRules(currentText, activeRules);
+    const closest = res.allMatches.find((m) => Math.abs(m.start - start) < 10);
+    if (closest) {
+      targetStart = closest.start;
+      targetEnd = closest.end;
+      if (!replacement) {
+        replacement = closest.replacement;
       }
+    } else if (!replacement) {
+      updateOverlayForElement(element);
+      return;
     }
 
-    const { newText, nextCursorPos } = TextScanner.replaceWordAt(currentText, targetStart, targetEnd);
+    const { newText, nextCursorPos } = TextScanner.replaceWordAt(currentText, targetStart, targetEnd, replacement);
 
     // Apply native value change
     setNativeValue(element, newText);
@@ -674,9 +694,9 @@
     };
   }
 
-  // React to storage changes in real time (e.g. user toggled allowlist in popup)
-  chrome.storage.onChanged.addListener((changes, area) => {
-    if (changes.allowlist) {
+  // React to storage changes in real time (e.g. user toggled whitelist, replacer switch, or updated rules)
+  chrome.storage.onChanged.addListener((changes) => {
+    if (changes.allowlist || changes.site_replacer_state || changes.replacer_rules) {
       checkAllowlistAndInitialize();
     }
   });

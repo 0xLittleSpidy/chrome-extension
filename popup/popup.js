@@ -1,5 +1,6 @@
 /**
- * Popup Script: Manages allowlist UI, site status, and storage synchronization.
+ * Popup Script for Helper Extension.
+ * Manages whitelist, active site replacer/storage switches, and quick settings link.
  */
 document.addEventListener('DOMContentLoaded', async () => {
   const siteStatusBadge = document.getElementById('site-status-badge');
@@ -7,6 +8,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   const currentSiteHost = document.getElementById('current-site-host');
   const toggleCurrentSiteBtn = document.getElementById('toggle-current-site-btn');
   const toggleCurrentSiteLabel = document.getElementById('toggle-current-site-label');
+  const activeSiteSwitches = document.getElementById('active-site-switches');
+  const toggleSiteReplacer = document.getElementById('toggle-site-replacer');
+  const toggleSiteStorage = document.getElementById('toggle-site-storage');
+  const openSettingsBtn = document.getElementById('open-settings-btn');
   const addForm = document.getElementById('add-form');
   const customDomainInput = document.getElementById('custom-domain-input');
   const addFeedback = document.getElementById('add-feedback');
@@ -25,12 +30,11 @@ document.addEventListener('DOMContentLoaded', async () => {
       currentTabUrl = activeTab.url;
       currentSiteId = AllowlistUtils.getSiteIdentifier(currentTabUrl);
       currentSiteHost.textContent = currentSiteId || 'Non-web page (e.g. chrome://)';
-      
-      // Check if URL is scriptable (http, https, file)
-      const isScriptable = currentTabUrl.startsWith('http://') || 
-                           currentTabUrl.startsWith('https://') || 
+
+      const isScriptable = currentTabUrl.startsWith('http://') ||
+                           currentTabUrl.startsWith('https://') ||
                            currentTabUrl.startsWith('file://');
-      
+
       if (!isScriptable) {
         toggleCurrentSiteBtn.disabled = true;
         toggleCurrentSiteLabel.textContent = 'Unavailable on this page';
@@ -44,45 +48,52 @@ document.addEventListener('DOMContentLoaded', async () => {
     toggleCurrentSiteBtn.disabled = true;
   }
 
-  // 2. Storage helper functions
-  async function loadAllowlist() {
-    try {
-      const data = await chrome.storage.sync.get(['allowlist']);
-      return Array.isArray(data.allowlist) ? data.allowlist : [];
-    } catch (err) {
-      const data = await chrome.storage.local.get(['allowlist']);
-      return Array.isArray(data.allowlist) ? data.allowlist : [];
-    }
+  // 2. Open full settings hub
+  if (openSettingsBtn) {
+    openSettingsBtn.addEventListener('click', () => {
+      chrome.runtime.openOptionsPage();
+    });
   }
 
-  async function saveAllowlist(list) {
-    try {
-      await chrome.storage.sync.set({ allowlist: list });
-    } catch (err) {
-      await chrome.storage.local.set({ allowlist: list });
-    }
-  }
-
-  // 3. Render functions
-  function render() {
+  // 3. Render function
+  async function render() {
     allowlistCount.textContent = currentAllowlist.length;
 
-    // Check if current page is allowed
     const isCurrentAllowed = currentTabUrl && AllowlistUtils.isUrlAllowed(currentTabUrl, currentAllowlist);
 
     if (isCurrentAllowed) {
-      siteStatusBadge.className = 'status-badge badge-active';
-      siteStatusText.textContent = 'Active on this site';
+      const isReplacerOn = await StorageManager.getSiteReplacerEnabled(currentSiteId);
+      const isStorageOn = await StorageManager.getSiteStorageEnabled(currentSiteId);
+
+      if (isReplacerOn) {
+        siteStatusBadge.className = 'status-badge badge-active';
+        siteStatusText.textContent = 'Active on this site';
+      } else {
+        siteStatusBadge.className = 'status-badge badge-inactive';
+        siteStatusText.textContent = 'Replacer paused';
+      }
+
       toggleCurrentSiteBtn.className = 'btn btn-danger';
-      toggleCurrentSiteLabel.textContent = 'Remove from Allowlist';
+      toggleCurrentSiteLabel.textContent = 'Remove from Whitelist';
+
+      // Show per-site switches
+      if (activeSiteSwitches) {
+        activeSiteSwitches.style.display = 'flex';
+        toggleSiteReplacer.checked = isReplacerOn;
+        toggleSiteStorage.checked = isStorageOn;
+      }
     } else {
       siteStatusBadge.className = 'status-badge badge-inactive';
       siteStatusText.textContent = 'Inactive on this site';
       toggleCurrentSiteBtn.className = 'btn btn-primary';
       toggleCurrentSiteLabel.textContent = 'Allow on This Website';
+
+      if (activeSiteSwitches) {
+        activeSiteSwitches.style.display = 'none';
+      }
     }
 
-    // Render list of websites
+    // Render whitelist items
     allowlistContainer.innerHTML = '';
     if (currentAllowlist.length === 0) {
       emptyState.style.display = 'block';
@@ -121,9 +132,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         removeBtn.addEventListener('click', async (e) => {
           e.stopPropagation();
           currentAllowlist.splice(index, 1);
-          await saveAllowlist(currentAllowlist);
+          await StorageManager.setAllowlist(currentAllowlist);
           showFeedback(`Removed ${domain}`, 'success');
-          render();
+          await render();
         });
 
         itemEl.appendChild(domainSpan);
@@ -143,29 +154,49 @@ document.addEventListener('DOMContentLoaded', async () => {
     }, 2800);
   }
 
-  // 4. Toggle current site button handler
+  // 4. Toggle current site in whitelist
   toggleCurrentSiteBtn.addEventListener('click', async () => {
     if (!currentSiteId) return;
 
     const isCurrentAllowed = AllowlistUtils.isUrlAllowed(currentTabUrl, currentAllowlist);
 
     if (isCurrentAllowed) {
-      // Find matching pattern(s) to remove
       currentAllowlist = currentAllowlist.filter(p => !AllowlistUtils.matchUrlWithPattern(currentTabUrl, p));
-      await saveAllowlist(currentAllowlist);
+      await StorageManager.setAllowlist(currentAllowlist);
       showFeedback(`Removed ${currentSiteId}`, 'success');
     } else {
-      // Add current site
       if (!currentAllowlist.includes(currentSiteId)) {
         currentAllowlist.push(currentSiteId);
-        await saveAllowlist(currentAllowlist);
-        showFeedback(`Added ${currentSiteId} to allowlist`, 'success');
+        await StorageManager.setAllowlist(currentAllowlist);
+        showFeedback(`Added ${currentSiteId} to whitelist`, 'success');
       }
     }
-    render();
+    await render();
   });
 
-  // 5. Add custom domain form submission
+  // 5. Active site replacer switch change handler
+  if (toggleSiteReplacer) {
+    toggleSiteReplacer.addEventListener('change', async () => {
+      if (!currentSiteId) return;
+      const isChecked = toggleSiteReplacer.checked;
+      await StorageManager.setSiteReplacerEnabled(currentSiteId, isChecked);
+      showFeedback(isChecked ? 'Replacer enabled on this site' : 'Replacer paused on this site');
+      await render();
+    });
+  }
+
+  // 6. Active site storage switch change handler
+  if (toggleSiteStorage) {
+    toggleSiteStorage.addEventListener('change', async () => {
+      if (!currentSiteId) return;
+      const isChecked = toggleSiteStorage.checked;
+      await StorageManager.setSiteStorageEnabled(currentSiteId, isChecked);
+      showFeedback(isChecked ? 'Storage enabled on this site' : 'Storage paused on this site');
+      await render();
+    });
+  }
+
+  // 7. Add custom domain form submission
   addForm.addEventListener('submit', async (e) => {
     e.preventDefault();
     const rawVal = customDomainInput.value;
@@ -177,26 +208,26 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     if (currentAllowlist.includes(normalized)) {
-      showFeedback('Website is already in the allowlist', 'error');
+      showFeedback('Website is already in the whitelist', 'error');
       return;
     }
 
     currentAllowlist.push(normalized);
-    await saveAllowlist(currentAllowlist);
+    await StorageManager.setAllowlist(currentAllowlist);
     customDomainInput.value = '';
     showFeedback(`Added ${normalized}`, 'success');
-    render();
+    await render();
   });
 
-  // 6. Listen for storage changes from background or other windows
-  chrome.storage.onChanged.addListener((changes, area) => {
-    if (changes.allowlist) {
-      currentAllowlist = Array.isArray(changes.allowlist.newValue) ? changes.allowlist.newValue : [];
-      render();
+  // 8. Listen for storage changes
+  chrome.storage.onChanged.addListener(async (changes) => {
+    if (changes.allowlist || changes.site_replacer_state || changes.site_storage_state) {
+      currentAllowlist = await StorageManager.getAllowlist();
+      await render();
     }
   });
 
   // Initial load
-  currentAllowlist = await loadAllowlist();
-  render();
+  currentAllowlist = await StorageManager.getAllowlist();
+  await render();
 });

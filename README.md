@@ -1,38 +1,38 @@
-# Is & Are Replacer — Chrome Extension (Manifest V3)
+# Helper - Chrome Extension (Manifest V3)
 
-A Chrome extension that scans textboxes and text input fields on user-approved (allowlisted) websites for sentences containing the words **"is"** or **"are"**, highlights and underlines them in yellow, and allows instant **one-click replacement to "was" or "were"**.
+A Chrome extension for dynamic text replacement, snippet clipboard storage, and domain management.
 
 ---
 
 ## Features
 
-1. **Text Field Detection**:
-   - Detects standard `<textarea>` elements and text-based `<input>` elements (`type="text"`, `search`, `url`, `email`, `tel`, etc.).
-   - Automatically detects and tracks dynamically created text fields using a `MutationObserver`.
+1. **Dynamic Text Field Replacer**:
+   - Detects standard `<textarea>` elements, text-based `<input>` elements, and `contenteditable` elements.
+   - Automatically detects and tracks dynamically added fields using `MutationObserver`.
+   - User-configurable replacement rules: add, edit, or delete any find-and-replace rule.
+   - Default rules included out-of-the-box (`"is"` -> `"was"`, `"are"` -> `"were"`).
+   - Case preservation: `"Is"` -> `"Was"`, `"IS"` -> `"WAS"`, `"Are"` -> `"Were"`, `"ARE"` -> `"WERE"`.
+   - Whole-word matching: prevents matching inside substrings (e.g., does not replace inside "island" or "area").
+   - Click any highlighted mark to perform instant replacement with native framework event dispatching.
 
-2. **Precise Word Matching & Sentence Isolation**:
-   - Matches standalone words `"is"` and `"are"` (case-insensitive: `"is"`, `"Is"`, `"IS"`, `"are"`, `"Are"`, `"ARE"`).
-   - Never matches words that contain `"is"` or `"are"` as a substring (such as `"island"`, `"dismiss"`, `"issue"`, `"area"`, `"share"`, `"farewell"`, or `"parent"`).
-   - Identifies sentence boundaries while preserving all surrounding sentences and text.
+2. **Frequently Used Text Snippets & Clipboard Context Menu**:
+   - Manage reusable text snippets in the dedicated Settings configuration center (`settings/settings.html`).
+   - Each snippet contains a **Heading** and **Description**.
+   - Accessible from the browser right-click context menu under **Saved Snippets**.
+   - Clicking a snippet heading automatically copies the description to the system clipboard via an isolated offscreen document.
+   - Instant visual notification confirms copy status.
 
-3. **Yellow Underline Highlighting**:
-   - Highlights matching words with a bright yellow background and distinct amber underline.
-   - Text rendering is mirrored with Shadow DOM styling, preventing any website CSS collision.
-   - Preserves underlying text colors and typing flow without interfering with cursor navigation, selection, or normal form behavior.
+3. **Dedicated Configuration Center (`settings/settings.html`)**:
+   - **Whitelist Management**: Add and delete permitted website domains.
+   - **Saved Snippets**: Add, edit, test copy, and delete saved snippet items.
+   - **Replacer Rules**: Add, edit, and delete dynamic replacement rules with whole-word and case-preservation options.
+   - **Import & Export**: Backup or restore configuration to/from a single portable JSON file (`helper-backup.json`) to easily transfer settings between machines or users.
 
-4. **One-Click Quick Replacement**:
-   - Clicking any highlighted word replaces it immediately:
-     - `"is"` -> `"was"`, `"Is"` -> `"Was"`, `"IS"` -> `"WAS"`
-     - `"are"` -> `"were"`, `"Are"` -> `"Were"`, `"ARE"` -> `"WERE"`
-   - Dispatches native `input` and `change` events so modern JavaScript frameworks (React, Vue, Angular) register the change automatically.
-   - Restores cursor position right after the replaced word.
-
-5. **Website Allowlist & Modern UI**:
-   - The extension is **strictly inactive by default** on all websites.
-   - Users can allow or disable the extension for the current tab with a single click in the extension popup.
-   - Users can manually add domains, subdomains (e.g., `*.google.com`), or localhost URLs.
-   - Settings sync across browser sessions via `chrome.storage.sync`.
-   - Dynamic real-time activation: adding or removing a website in the popup takes effect on all open tabs instantly without needing a page refresh.
+4. **Per-Site Replacer and Storage Switches in Popup**:
+   - Whitelist status: Allow or remove current domain.
+   - **Replacer Switch**: Temporarily pause or resume text replacement on a whitelisted site without deleting it from the whitelist.
+   - **Storage Switch**: Temporarily pause or resume snippet and storage integration on a specific site.
+   - Quick navigation button to open the full Settings center.
 
 ---
 
@@ -41,7 +41,7 @@ A Chrome extension that scans textboxes and text input fields on user-approved (
 ```
 chrome_extension/
 ├── manifest.json              # Manifest V3 specification
-├── background.js              # Background service worker (badge & lifecycle management)
+├── background.js              # Background service worker (badge, context menus, offscreen copy)
 ├── CHROMEWEBSTORE.md          # Chrome Web Store listing metadata & privacy justifications
 ├── GEMINI.md                  # Project rules and guidelines (no emoji rule)
 ├── package.json               # Test script configuration
@@ -51,21 +51,27 @@ chrome_extension/
 │   ├── icon-48.png
 │   └── icon-128.png
 ├── lib/
-│   ├── text-scanner.js        # Sentence segmentation, word matching & replacement logic
+│   ├── storage-manager.js     # Storage abstraction & JSON import/export
+│   ├── text-scanner.js        # Dynamic rule compiler & sentence text scanner
 │   └── allowlist-utils.js     # URL matching & pattern normalization utilities
+├── offscreen/
+│   ├── offscreen.html         # Offscreen document for clipboard operations
+│   └── offscreen.js           # Clipboard writer implementation
+├── settings/
+│   ├── settings.html          # Configuration center (Whitelist, Snippets, Rules, Import/Export)
+│   ├── settings.css           # Styling for settings hub
+│   └── settings.js            # Controller for CRUD operations & file export/import
 ├── popup/
-│   ├── popup.html             # Popup user interface
-│   ├── popup.css              # Responsive modern styling
-│   └── popup.js               # Allowlist management & storage synchronization
+│   ├── popup.html             # Popup user interface with active-site switches
+│   ├── popup.css              # Styling for popup
+│   └── popup.js               # Popup controller & per-site toggle handlers
 ├── content/
 │   ├── content.js             # DOM scanner, Shadow DOM overlay manager & click handler
 │   └── content.css            # Highlight & overlay styles inside Shadow DOM
-├── skills/                    # Antigravity skill definitions
-│   └── verb-tense-highlighter/
-│       └── SKILL.md
 ├── test/
-│   ├── unit.test.js           # Unit tests for text scanning & allowlist matching
-│   ├── popup.test.js          # Unit tests for popup UI & identifier extraction
+│   ├── unit.test.js           # Unit tests for text scanner, rules, and storage manager
+│   ├── popup.test.js          # Popup structure & integrity verification
+│   ├── settings.test.js       # Settings page elements & structure verification
 │   └── integration.test.js    # Automated end-to-end CDP test in headless Chrome
 └── test-page.html             # Interactive HTML test suite
 ```
@@ -78,36 +84,21 @@ chrome_extension/
 2. Navigate to `chrome://extensions/`.
 3. In the top-right corner, turn on **Developer mode**.
 4. In the top-left corner, click **Load unpacked**.
-5. Select the `chrome_extension` folder (`/home/littlespidy/myextra/chrome_extension`).
-6. The **Is & Are Replacer** extension will appear in your toolbar.
+5. Select this folder (`/home/littlespidy/myextra/chrome_extension`).
+6. The **Helper** extension will appear in your toolbar.
 
 ---
 
-## How to Use
+## Running Automated Tests
 
-1. Navigate to any website containing text inputs or textareas (e.g. `http://localhost:8765/test-page.html`).
-2. Click the extension icon in the toolbar.
-3. Click **"Allow on This Website"** (or add custom domain patterns in the popup).
-4. Text fields containing sentences with `"is"` or `"are"` will display matching words highlighted in yellow with an underline.
-5. Click on the yellow highlighted word to replace it with its past tense form.
-
----
-
-## Troubleshooting on Private Sites
-
-If the extension is not highlighting text fields on a private website:
-
-1. Open the target website.
-2. Open Chrome Developer Tools (**F12** or Right Click &rarr; **Inspect** &rarr; **Console** tab).
-3. Copy and paste the contents of [`diagnostic.js`](diagnostic.js) into the console and press Enter.
-4. Share the JSON output to identify the exact input type, shadow DOM structure, or allowlist status on that page.
-
----
-
-## Running the Automated Test Suite
-
-Run the full automated test suite (unit + popup + headless browser integration test):
-
+Run the full automated test suite:
 ```bash
 npm test
+```
+Or run individual test modules:
+```bash
+npm run test:unit
+npm run test:popup
+npm run test:settings
+npm run test:integration
 ```

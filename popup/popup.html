@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Is & Are Replacer</title>
+  <title>Helper</title>
   <link rel="stylesheet" href="popup.css">
 </head>
 <body>
@@ -12,13 +12,11 @@
     <header class="header">
       <div class="header-brand">
         <div class="logo-icon">
-          <span class="logo-text">is/are</span>
-          <span class="logo-arrow">→</span>
-          <span class="logo-text was">was/were</span>
+          <span class="logo-letter">H</span>
         </div>
         <div class="header-titles">
-          <h1 class="title">Is & Are Replacer</h1>
-          <p class="subtitle">Text Field Scanner & Replacer</p>
+          <h1 class="title">Helper</h1>
+          <p class="subtitle">Productivity & Text Assistant</p>
         </div>
       </div>
       <div id="site-status-badge" class="status-badge badge-inactive">
@@ -41,18 +39,52 @@
           <span id="toggle-current-site-label">Allow on This Website</span>
         </button>
       </div>
+
+      <!-- Active Site Switches (Shown when current site is whitelisted) -->
+      <div id="active-site-switches" class="active-site-switches" style="display: none;">
+        <div class="switch-row">
+          <div class="switch-info">
+            <span class="switch-title">Replacer on this site</span>
+            <span class="switch-desc">Enable or pause word replacements</span>
+          </div>
+          <label class="toggle-switch">
+            <input type="checkbox" id="toggle-site-replacer" checked>
+            <span class="slider"></span>
+          </label>
+        </div>
+
+        <div class="switch-row">
+          <div class="switch-info">
+            <span class="switch-title">Storage on this site</span>
+            <span class="switch-desc">Enable snippet context menu integration</span>
+          </div>
+          <label class="toggle-switch">
+            <input type="checkbox" id="toggle-site-storage" checked>
+            <span class="slider"></span>
+          </label>
+        </div>
+      </div>
+    </section>
+
+    <!-- Settings Quick Action Card -->
+    <section class="card quick-settings-card">
+      <div class="card-header-flex">
+        <span class="section-label">Configuration Center</span>
+        <button id="open-settings-btn" class="btn btn-secondary btn-sm">Open Settings</button>
+      </div>
+      <p class="quick-settings-desc">Manage saved snippets, custom replacer rules, import/export, and global whitelist.</p>
     </section>
 
     <!-- Add Custom Website Section -->
     <section class="add-section">
-      <label for="custom-domain-input" class="section-label">Add Website to Allowlist</label>
+      <label for="custom-domain-input" class="section-label">Add Website to Whitelist</label>
       <form id="add-form" class="input-group">
         <input 
           type="text" 
           id="custom-domain-input" 
           placeholder="e.g. example.com or *.domain.org" 
           autocomplete="off" 
-          spellcheck="false"
+          spellcheck="false" 
         />
         <button type="submit" id="add-domain-btn" class="btn btn-secondary">
           Add
@@ -64,7 +96,7 @@
     <!-- Allowlist Management Section -->
     <section class="allowlist-section">
       <div class="section-header">
-        <span class="section-label">Allowlisted Websites</span>
+        <span class="section-label">Whitelisted Websites</span>
         <span id="allowlist-count" class="count-badge">0</span>
       </div>
 
@@ -73,8 +105,8 @@
       </div>
 
       <div id="empty-state" class="empty-state">
-        <p class="empty-title">No websites allowlisted</p>
-        <p class="empty-desc">The extension only scans text fields on allowlisted websites. Add this site or enter a domain above.</p>
+        <p class="empty-title">No websites whitelisted</p>
+        <p class="empty-desc">Helper only scans text fields on allowlisted websites. Add this site or enter a domain above.</p>
       </div>
     </section>
 
@@ -84,12 +116,13 @@
         <svg class="tip-icon-svg" width="14" height="14" viewBox="0 0 20 20" fill="#a16207">
           <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"/>
         </svg>
-        <p class="tip-text">Underlines & highlights "is" and "are" in yellow in text fields. Click any highlight to replace with "was" or "were".</p>
+        <p class="tip-text">Underlines and highlights configured words. Right-click anywhere to copy saved snippets.</p>
       </div>
     </footer>
   </div>
 
   <script src="../lib/allowlist-utils.js"></script>
+  <script src="../lib/storage-manager.js"></script>
   <script src="popup.js"></script>
 </body>
 </html>

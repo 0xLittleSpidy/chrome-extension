@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Is & Are Replacer",
-  "version": "1.1.0",
-  "description": "Scans text fields on allowlisted websites for sentences containing 'is' or 'are', highlights them in yellow with an underline, and allows one-click replacement with 'was' or 'were'.",
+  "name": "Helper",
+  "version": "2.0.0",
+  "description": "Productivity assistant for text replacement, snippet clipboard storage, and domain management.",
   "icons": {
     "16": "icons/icon-16.png",
     "48": "icons/icon-48.png",
@@ -10,12 +10,16 @@
   },
   "action": {
     "default_popup": "popup/popup.html",
-    "default_title": "Is & Are Replacer",
+    "default_title": "Helper",
     "default_icon": {
       "16": "icons/icon-16.png",
       "48": "icons/icon-48.png",
       "128": "icons/icon-128.png"
     }
+  },
+  "options_ui": {
+    "page": "settings/settings.html",
+    "open_in_tab": true
   },
   "background": {
     "service_worker": "background.js"
@@ -23,7 +27,10 @@
   "permissions": [
     "storage",
     "tabs",
-    "activeTab"
+    "activeTab",
+    "contextMenus",
+    "offscreen",
+    "notifications"
   ],
   "host_permissions": [
     "<all_urls>"
@@ -36,6 +43,7 @@
       "js": [
         "lib/text-scanner.js",
         "lib/allowlist-utils.js",
+        "lib/storage-manager.js",
         "content/content.js"
       ],
       "run_at": "document_idle",

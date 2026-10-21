@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Helper - Settings & Configuration</title>
+  <link rel="stylesheet" href="settings.css">
+</head>
+<body>
+  <div class="settings-layout">
+    <!-- Sidebar Navigation -->
+    <aside class="sidebar">
+      <div class="brand-area">
+        <div class="brand-badge">H</div>
+        <div>
+          <h1 class="brand-title">Helper</h1>
+          <p class="brand-subtitle">Configuration Center</p>
+        </div>
+      </div>
+
+      <nav class="nav-menu">
+        <button class="nav-btn active" data-tab="tab-whitelist" id="nav-whitelist">
+          <span class="nav-label">Whitelist</span>
+        </button>
+        <button class="nav-btn" data-tab="tab-snippets" id="nav-snippets">
+          <span class="nav-label">Saved Snippets</span>
+        </button>
+        <button class="nav-btn" data-tab="tab-rules" id="nav-rules">
+          <span class="nav-label">Replacer Rules</span>
+        </button>
+        <button class="nav-btn" data-tab="tab-import-export" id="nav-import-export">
+          <span class="nav-label">Import & Export</span>
+        </button>
+      </nav>
+
+      <div class="sidebar-footer">
+        <p class="version-tag">Helper v2.0.0</p>
+      </div>
+    </aside>
+
+    <!-- Main Content Area -->
+    <main class="main-content">
+      <!-- Global Feedback Toast -->
+      <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+      <!-- Tab 1: Whitelist -->
+      <section id="tab-whitelist" class="tab-panel active">
+        <header class="section-header">
+          <div>
+            <h2 class="section-title">Whitelist Management</h2>
+            <p class="section-desc">Manage the websites where Helper text scanning and replacement is allowed to run.</p>
+          </div>
+        </header>
+
+        <div class="card">
+          <h3 class="card-title">Add Website</h3>
+          <form id="add-whitelist-form" class="form-row">
+            <input 
+              type="text" 
+              id="whitelist-input" 
+              class="form-input" 
+              placeholder="e.g. example.com or *.domain.org" 
+              autocomplete="off" 
+              spellcheck="false" 
+              required
+            />
+            <button type="submit" class="btn btn-primary">Add Website</button>
+          </form>
+        </div>
+
+        <div class="card">
+          <div class="card-header-flex">
+            <h3 class="card-title">Approved Websites</h3>
+            <span id="whitelist-count" class="badge">0 items</span>
+          </div>
+
+          <div id="whitelist-list" class="items-list">
+            <!-- Dynamically populated -->
+          </div>
+
+          <div id="whitelist-empty" class="empty-state">
+            <p class="empty-title">No websites in whitelist</p>
+            <p class="empty-desc">Helper only scans text fields on allowlisted websites. Add one above to get started.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- Tab 2: Saved Snippets -->
+      <section id="tab-snippets" class="tab-panel">
+        <header class="section-header">
+          <div>
+            <h2 class="section-title">Frequently Used Snippets</h2>
+            <p class="section-desc">Store common text snippets. Right-click on any page to view them and copy with one click.</p>
+          </div>
+        </header>
+
+        <div class="card">
+          <h3 id="snippet-form-title" class="card-title">Add New Snippet</h3>
+          <form id="snippet-form" class="form-col">
+            <input type="hidden" id="snippet-id" value="">
+            
+            <div class="form-group">
+              <label for="snippet-heading" class="form-label">Heading (Title in Context Menu)</label>
+              <input 
+                type="text" 
+                id="snippet-heading" 
+                class="form-input" 
+                placeholder="e.g. Work Email, Support Reply, Signature" 
+                required 
+              />
+            </div>
+
+            <div class="form-group">
+              <label for="snippet-description" class="form-label">Description (Text copied to clipboard)</label>
+              <textarea 
+                id="snippet-description" 
+                class="form-textarea" 
+                rows="4" 
+                placeholder="Enter the full text content to store and copy..." 
+                required
+              ></textarea>
+            </div>
+
+            <div class="form-actions">
+              <button type="submit" id="snippet-submit-btn" class="btn btn-primary">Save Snippet</button>
+              <button type="button" id="snippet-cancel-btn" class="btn btn-secondary" style="display: none;">Cancel</button>
+            </div>
+          </form>
+        </div>
+
+        <div class="card">
+          <div class="card-header-flex">
+            <h3 class="card-title">Saved Snippets</h3>
+            <span id="snippets-count" class="badge">0 snippets</span>
+          </div>
+
+          <div id="snippets-list" class="snippets-grid">
+            <!-- Dynamically populated -->
+          </div>
+
+          <div id="snippets-empty" class="empty-state">
+            <p class="empty-title">No snippets saved</p>
+            <p class="empty-desc">Create your first snippet above. It will instantly be available in the right-click context menu.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- Tab 3: Replacer Rules -->
+      <section id="tab-rules" class="tab-panel">
+        <header class="section-header">
+          <div>
+            <h2 class="section-title">Dynamic Replacer Rules</h2>
+            <p class="section-desc">Configure word and phrase replacement rules. Highlighted words can be replaced with one click in text fields.</p>
+          </div>
+        </header>
+
+        <div class="card">
+          <h3 id="rule-form-title" class="card-title">Add Replacement Rule</h3>
+          <form id="rule-form" class="form-col">
+            <input type="hidden" id="rule-id" value="">
+
+            <div class="form-row-2col">
+              <div class="form-group">
+                <label for="rule-find" class="form-label">Original Word or Text (Find)</label>
+                <input 
+                  type="text" 
+                  id="rule-find" 
+                  class="form-input" 
+                  placeholder="e.g. is" 
+                  required 
+                />
+              </div>
+
+              <div class="form-group">
+                <label for="rule-replace" class="form-label">Replacement (Replace with)</label>
+                <input 
+                  type="text" 
+                  id="rule-replace" 
+                  class="form-input" 
+                  placeholder="e.g. was" 
+                />
+              </div>
+            </div>
+
+            <div class="form-checkbox-group">
+              <label class="checkbox-label">
+                <input type="checkbox" id="rule-whole-word" checked>
+                <span>Match whole word only (avoid substring matches)</span>
+              </label>
+
+              <label class="checkbox-label">
+                <input type="checkbox" id="rule-match-case" checked>
+                <span>Preserve case (e.g. "Is" becomes "Was", "IS" becomes "WAS")</span>
+              </label>
+            </div>
+
+            <div class="form-actions">
+              <button type="submit" id="rule-submit-btn" class="btn btn-primary">Save Rule</button>
+              <button type="button" id="rule-cancel-btn" class="btn btn-secondary" style="display: none;">Cancel</button>
+            </div>
+          </form>
+        </div>
+
+        <div class="card">
+          <div class="card-header-flex">
+            <h3 class="card-title">Active Replacement Rules</h3>
+            <span id="rules-count" class="badge">0 rules</span>
+          </div>
+
+          <div id="rules-list" class="rules-table-container">
+            <!-- Dynamically populated -->
+          </div>
+
+          <div id="rules-empty" class="empty-state">
+            <p class="empty-title">No replacement rules configured</p>
+            <p class="empty-desc">Add a rule above or reset to default "is -> was" rules.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- Tab 4: Import & Export -->
+      <section id="tab-import-export" class="tab-panel">
+        <header class="section-header">
+          <div>
+            <h2 class="section-title">Import & Export Configuration</h2>
+            <p class="section-desc">Share saved snippets, replacement rules, and whitelist entries with other users via a JSON file.</p>
+          </div>
+        </header>
+
+        <div class="card">
+          <h3 class="card-title">Export Settings</h3>
+          <p class="card-subtext">Download your complete configuration including all snippets, replacer rules, and whitelisted sites as a single JSON file.</p>
+          <div class="form-actions">
+            <button id="export-json-btn" class="btn btn-primary">Download JSON File</button>
+          </div>
+        </div>
+
+        <div class="card">
+          <h3 class="card-title">Import Settings</h3>
+          <p class="card-subtext">Upload a previously exported JSON file to restore or synchronize your snippets and rules.</p>
+          
+          <div class="import-drop-zone">
+            <input type="file" id="import-file-input" accept=".json,application/json" class="file-input">
+            <label for="import-file-input" class="file-label">
+              <span class="file-title">Select or drag JSON file here</span>
+              <span class="file-subtitle">Accepts valid Helper backup .json files</span>
+            </label>
+          </div>
+
+          <div id="import-preview" class="import-preview" style="display: none;">
+            <p id="import-preview-text" class="preview-text"></p>
+            <button id="import-confirm-btn" class="btn btn-primary">Confirm Import</button>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script src="../lib/allowlist-utils.js"></script>
+  <script src="../lib/storage-manager.js"></script>
+  <script src="settings.js"></script>
+</body>
+</html>
