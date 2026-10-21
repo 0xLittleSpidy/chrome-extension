@@ -21,6 +21,9 @@ chrome.runtime.onStartup.addListener(async () => {
   await rebuildContextMenus();
 });
 
+// Immediately initialize context menus at top level
+rebuildContextMenus();
+
 /**
  * Rebuilds context menu items dynamically based on saved snippets.
  */
@@ -31,7 +34,7 @@ async function rebuildContextMenus() {
     try {
       chrome.contextMenus.create({
         id: CONTEXT_MENU_ROOT_ID,
-        title: 'Saved Snippets',
+        title: 'Saved Snippets (Click to Copy)',
         contexts: ['all']
       });
 
@@ -49,7 +52,7 @@ async function rebuildContextMenus() {
           chrome.contextMenus.create({
             id: `${CONTEXT_MENU_SNIPPET_PREFIX}${item.id}`,
             parentId: CONTEXT_MENU_ROOT_ID,
-            title: item.heading || 'Untitled Snippet',
+            title: `Copy: ${item.heading || 'Untitled Snippet'}`,
             contexts: ['all']
           });
         });
@@ -172,8 +175,9 @@ async function updateBadgeForTab(tabId, url) {
     if (isAllowed) {
       const domain = AllowlistUtils.getSiteIdentifier(url);
       const isReplacerOn = await StorageManager.getSiteReplacerEnabled(domain);
+      const isStorageOn = await StorageManager.getSiteStorageEnabled(domain);
 
-      if (isReplacerOn) {
+      if (isReplacerOn && isStorageOn) {
         await chrome.action.setBadgeText({ tabId, text: 'ON' });
         await chrome.action.setBadgeBackgroundColor({ tabId, color: BADGE_COLOR_ACTIVE });
         await chrome.action.setTitle({
@@ -183,9 +187,14 @@ async function updateBadgeForTab(tabId, url) {
       } else {
         await chrome.action.setBadgeText({ tabId, text: 'PAUSE' });
         await chrome.action.setBadgeBackgroundColor({ tabId, color: BADGE_COLOR_PAUSED });
+        const pauseReason = !isReplacerOn && !isStorageOn
+          ? 'Helper: All features paused on this site'
+          : !isReplacerOn
+          ? 'Helper: Replacer paused on this site'
+          : 'Helper: Storage paused on this site';
         await chrome.action.setTitle({
           tabId,
-          title: 'Helper: Replacer paused on this site'
+          title: pauseReason
         });
       }
     } else {
@@ -221,7 +230,7 @@ chrome.tabs.onActivated.addListener(async (activeInfo) => {
 
 // Update tabs and menus when storage changes
 chrome.storage.onChanged.addListener(async (changes) => {
-  if (changes.allowlist || changes.site_replacer_state) {
+  if (changes.allowlist || changes.site_replacer_state || changes.site_storage_state) {
     try {
       const tabs = await chrome.tabs.query({});
       for (const tab of tabs) {

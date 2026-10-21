@@ -438,7 +438,29 @@ async function runTest() {
   assert.strictEqual(snippetData[0].heading, 'Quick Intro');
   console.log('[PASS] Snippets stored persistently in extension storage.');
 
-  // 15. Test allowlist removal deactivation
+  // 15. Test both switches disabled (multi-switch status)
+  console.log('[Multi-Switch] Disabling both replacer and storage on site...');
+  await evalInSW(`
+    new Promise(resolve => {
+      chrome.storage.sync.set({
+        site_replacer_state: { '127.0.0.1:${PORT}': false },
+        site_storage_state: { '127.0.0.1:${PORT}': false }
+      }, resolve);
+    })
+  `);
+  await new Promise(r => setTimeout(r, 400));
+  const swState = await evalInSW(`
+    (async () => {
+      const rep = await StorageManager.getSiteReplacerEnabled('127.0.0.1:${PORT}');
+      const stor = await StorageManager.getSiteStorageEnabled('127.0.0.1:${PORT}');
+      return { rep, stor };
+    })()
+  `);
+  assert.strictEqual(swState.rep, false);
+  assert.strictEqual(swState.stor, false);
+  console.log('[PASS] Both replacer and storage switches independently disabled on site.');
+
+  // 16. Test allowlist removal deactivation
   console.log('[Allowlist] Removing site from allowlist in storage...');
   await evalInSW(`
     new Promise(resolve => {
