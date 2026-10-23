@@ -7,7 +7,8 @@
     "test:popup": "node test/popup.test.js",
     "test:settings": "node test/settings.test.js",
     "test:integration": "node test/integration.test.js",
-    "test": "node test/unit.test.js && node test/popup.test.js && node test/settings.test.js && node test/integration.test.js"
+    "test:browser": "node test/browser-verification.js",
+    "test": "node test/unit.test.js && node test/popup.test.js && node test/settings.test.js && node test/integration.test.js && node test/browser-verification.js"
   },
   "keywords": [
     "chrome-extension",

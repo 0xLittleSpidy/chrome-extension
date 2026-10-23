@@ -207,16 +207,47 @@ console.log('--- RUNNING UNIT TESTS ---');
     /No valid settings, snippets, or rules found/
   );
 
-  // Test Snippets CRUD
-  await StorageManager.saveSnippet({ heading: 'Test Heading', description: 'Test Content' });
+  // Test Snippets CRUD with Multi-Answer support
+  await StorageManager.saveSnippet({
+    heading: 'Multi-Answer Question',
+    description: 'Answer 1: Restart router',
+    answers: [
+      'Answer 1: Restart router',
+      'Answer 2: Check cables',
+      'Answer 3: Call ISP'
+    ]
+  });
   let snips = await StorageManager.getSnippets();
   assert.strictEqual(snips.length, 2);
-  const createdSnippet = snips.find(s => s.heading === 'Test Heading');
-  assert.ok(createdSnippet);
+  const multiAnswerSnip = snips.find(s => s.heading === 'Multi-Answer Question');
+  assert.ok(multiAnswerSnip);
+  assert.strictEqual(multiAnswerSnip.answers.length, 3);
+  assert.strictEqual(multiAnswerSnip.answers[1], 'Answer 2: Check cables');
+  assert.strictEqual(multiAnswerSnip.description, 'Answer 1: Restart router');
 
-  await StorageManager.deleteSnippet(createdSnippet.id);
+  // Verify backward compatibility: snippet without answers gets answers array generated
+  await StorageManager.saveSnippet({ heading: 'Legacy Snippet', description: 'Single description string' });
+  snips = await StorageManager.getSnippets();
+  const legacySnip = snips.find(s => s.heading === 'Legacy Snippet');
+  assert.ok(legacySnip);
+  assert.deepStrictEqual(legacySnip.answers, ['Single description string']);
+
+  await StorageManager.deleteSnippet(multiAnswerSnip.id);
+  await StorageManager.deleteSnippet(legacySnip.id);
   snips = await StorageManager.getSnippets();
   assert.strictEqual(snips.length, 1);
+
+  // Test Theme Management (Dark Theme Default)
+  assert.strictEqual(await StorageManager.getTheme(), 'dark', 'Theme should default to dark');
+  await StorageManager.setTheme('light');
+  assert.strictEqual(await StorageManager.getTheme(), 'light');
+  await StorageManager.setTheme('dark');
+  assert.strictEqual(await StorageManager.getTheme(), 'dark');
+
+  // Test Local File Configured State
+  assert.strictEqual(await StorageManager.getFileConfigured(), false);
+  await StorageManager.setFileConfigured(true);
+  assert.strictEqual(await StorageManager.getFileConfigured(), true);
 
   // Test Per-Site Replacer & Storage Switches
   assert.strictEqual(await StorageManager.getSiteReplacerEnabled('example.com'), true);

@@ -539,6 +539,31 @@ input:checked + .slider:before {
   gap: 8px;
 }
 
+.popup-snippet-info {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  flex: 1;
+}
+
+.popup-snippet-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.popup-snippet-select {
+  padding: 3px 6px;
+  font-size: 11px;
+  background-color: #f8fafc;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  color: var(--text-primary);
+  max-width: 110px;
+  cursor: pointer;
+}
+
 .popup-snippet-heading {
   font-weight: 500;
   font-size: 12px;

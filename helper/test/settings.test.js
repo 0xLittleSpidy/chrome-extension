@@ -51,12 +51,25 @@ const requiredSettingsIds = [
   'import-preview-text',
   'import-confirm-btn',
   // Global
-  'toast'
+  'toast',
+  // Theme & File Persistence
+  'theme-toggle-btn',
+  'storage-setup-banner',
+  'banner-store-file-btn',
+  'banner-select-file-btn',
+  // Markdown & Multi-Answer
+  'snippet-markdown-preview',
+  'snippet-answers-nav',
+  'snippet-add-answer-btn'
 ];
 
 for (const id of requiredSettingsIds) {
   assert(settingsHtml.includes(`id="${id}"`), `settings.html must contain id="${id}"`);
 }
 
+// Verify dark theme is configured by default
+assert(settingsHtml.includes('data-theme="dark"'), 'settings.html must default to data-theme="dark"');
+
 console.log('[PASS] All essential settings elements present in settings.html');
+console.log('[PASS] Default dark theme verified in settings.html');
 console.log('[PASS] SETTINGS PAGE INTEGRITY TEST PASSED!');

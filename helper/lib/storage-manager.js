@@ -16,7 +16,9 @@
     SITE_REPLACER_STATE: 'site_replacer_state',
     SITE_STORAGE_STATE: 'site_storage_state',
     SNIPPETS: 'snippets',
-    REPLACER_RULES: 'replacer_rules'
+    REPLACER_RULES: 'replacer_rules',
+    STORAGE_FILE_CONFIGURED: 'storage_file_configured',
+    THEME: 'theme'
   };
 
   const DEFAULT_RULES = [
@@ -43,12 +45,20 @@
       id: 'snip-greeting',
       heading: 'Quick Greeting',
       description: 'Hello, thank you for reaching out!',
+      answers: [
+        'Hello, thank you for reaching out!',
+        'Hi there! How can I assist you today?'
+      ],
       updatedAt: 1700000000000
     },
     {
       id: 'snip-signature',
       heading: 'Email Signature',
       description: 'Best regards,\nHelper User',
+      answers: [
+        'Best regards,\nHelper User',
+        'Sincerely,\nHelper User\nProductivity Team'
+      ],
       updatedAt: 1700000000000
     }
   ];
@@ -171,7 +181,16 @@
   async function getSnippets() {
     const data = await getFromStorage([STORAGE_KEYS.SNIPPETS]);
     if (Array.isArray(data[STORAGE_KEYS.SNIPPETS])) {
-      return data[STORAGE_KEYS.SNIPPETS];
+      return data[STORAGE_KEYS.SNIPPETS].map(item => {
+        const answers = Array.isArray(item.answers) && item.answers.length > 0
+          ? item.answers
+          : [item.description || ''];
+        return {
+          ...item,
+          answers: answers,
+          description: item.description || answers[0] || ''
+        };
+      });
     }
     return DEFAULT_SNIPPETS;
   }
@@ -181,10 +200,23 @@
       throw new Error('Snippet heading is required');
     }
     const list = await getSnippets();
+
+    let answers = [];
+    if (Array.isArray(snippet.answers) && snippet.answers.length > 0) {
+      answers = snippet.answers.map(a => String(a).trim()).filter(a => a.length > 0);
+    }
+    if (answers.length === 0 && snippet.description) {
+      answers = [String(snippet.description).trim()];
+    }
+    if (answers.length === 0) {
+      answers = [''];
+    }
+
     const cleanSnippet = {
       id: snippet.id || 'snip-' + Date.now() + '-' + Math.random().toString(36).substring(2, 7),
       heading: String(snippet.heading).trim(),
-      description: String(snippet.description || ''),
+      description: answers[0] || String(snippet.description || '').trim(),
+      answers: answers,
       updatedAt: Date.now()
     };
 
@@ -280,7 +312,13 @@
       updates[STORAGE_KEYS.ALLOWLIST] = parsed.allowlist;
     }
     if (Array.isArray(parsed.snippets)) {
-      updates[STORAGE_KEYS.SNIPPETS] = parsed.snippets.filter(s => s && s.heading);
+      updates[STORAGE_KEYS.SNIPPETS] = parsed.snippets
+        .filter(s => s && s.heading)
+        .map(s => ({
+          ...s,
+          answers: Array.isArray(s.answers) && s.answers.length > 0 ? s.answers : [s.description || ''],
+          description: s.description || (Array.isArray(s.answers) && s.answers[0]) || ''
+        }));
     }
     if (Array.isArray(parsed.replacer_rules)) {
       updates[STORAGE_KEYS.REPLACER_RULES] = parsed.replacer_rules.filter(r => r && r.find);
@@ -292,6 +330,28 @@
 
     await setToStorage(updates);
     return updates;
+  }
+
+  // --- Theme API ---
+  async function getTheme() {
+    const data = await getFromStorage([STORAGE_KEYS.THEME]);
+    return data[STORAGE_KEYS.THEME] || 'dark'; // Dark theme by default
+  }
+
+  async function setTheme(theme) {
+    const cleanTheme = theme === 'light' ? 'light' : 'dark';
+    await setToStorage({ [STORAGE_KEYS.THEME]: cleanTheme });
+    return cleanTheme;
+  }
+
+  // --- Local File Setup State ---
+  async function getFileConfigured() {
+    const data = await getFromStorage([STORAGE_KEYS.STORAGE_FILE_CONFIGURED]);
+    return Boolean(data[STORAGE_KEYS.STORAGE_FILE_CONFIGURED]);
+  }
+
+  async function setFileConfigured(isConfigured) {
+    await setToStorage({ [STORAGE_KEYS.STORAGE_FILE_CONFIGURED]: Boolean(isConfigured) });
   }
 
   return {
@@ -311,6 +371,10 @@
     saveReplacerRule: saveReplacerRule,
     deleteReplacerRule: deleteReplacerRule,
     exportConfiguration: exportConfiguration,
-    importConfiguration: importConfiguration
+    importConfiguration: importConfiguration,
+    getTheme: getTheme,
+    setTheme: setTheme,
+    getFileConfigured: getFileConfigured,
+    setFileConfigured: setFileConfigured
   };
 });

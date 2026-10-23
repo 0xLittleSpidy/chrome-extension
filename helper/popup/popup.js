@@ -86,10 +86,42 @@ document.addEventListener('DOMContentLoaded', async () => {
         const row = document.createElement('div');
         row.className = 'popup-snippet-row';
 
+        const infoCol = document.createElement('div');
+        infoCol.className = 'popup-snippet-info';
+
         const heading = document.createElement('span');
         heading.className = 'popup-snippet-heading';
         heading.textContent = snippet.heading;
         heading.title = snippet.description;
+        infoCol.appendChild(heading);
+
+        const answers = Array.isArray(snippet.answers) && snippet.answers.length > 0
+          ? snippet.answers
+          : [snippet.description || ''];
+
+        let selectedAnswer = answers[0] || '';
+
+        const actionCol = document.createElement('div');
+        actionCol.className = 'popup-snippet-actions';
+
+        if (answers.length > 1) {
+          const select = document.createElement('select');
+          select.className = 'popup-snippet-select';
+          select.setAttribute('aria-label', `Select answer option for ${snippet.heading}`);
+          answers.forEach((ans, idx) => {
+            const opt = document.createElement('option');
+            opt.value = idx;
+            const preview = ans.replace(/\s+/g, ' ').trim().slice(0, 24);
+            opt.textContent = `Option ${idx + 1}: ${preview}${ans.length > 24 ? '...' : ''}`;
+            select.appendChild(opt);
+          });
+
+          select.addEventListener('change', () => {
+            const chosenIdx = parseInt(select.value, 10);
+            selectedAnswer = answers[chosenIdx] || answers[0];
+          });
+          actionCol.appendChild(select);
+        }
 
         const copyBtn = document.createElement('button');
         copyBtn.className = 'btn-copy-sm';
@@ -99,7 +131,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         copyBtn.addEventListener('click', async (e) => {
           e.stopPropagation();
           try {
-            await navigator.clipboard.writeText(snippet.description);
+            await navigator.clipboard.writeText(selectedAnswer);
             copyBtn.textContent = 'Copied!';
             copyBtn.classList.add('btn-copied');
             showFeedback(`Copied "${snippet.heading}" to clipboard`);
@@ -112,8 +144,9 @@ document.addEventListener('DOMContentLoaded', async () => {
           }
         });
 
-        row.appendChild(heading);
-        row.appendChild(copyBtn);
+        actionCol.appendChild(copyBtn);
+        row.appendChild(infoCol);
+        row.appendChild(actionCol);
         popupSnippetsList.appendChild(row);
       });
     }
@@ -149,11 +182,13 @@ document.addEventListener('DOMContentLoaded', async () => {
         siteStatusBadge.className = 'status-badge badge-inactive';
         siteStatusText.textContent = 'All features paused';
       } else if (!isReplacerOn) {
-        siteStatusBadge.className = 'status-badge badge-inactive';
-        siteStatusText.textContent = 'Replacer paused';
+        // Replacer paused, but snippets/storage is active
+        siteStatusBadge.className = 'status-badge badge-active';
+        siteStatusText.textContent = 'Active (Replacer paused)';
       } else {
-        siteStatusBadge.className = 'status-badge badge-inactive';
-        siteStatusText.textContent = 'Storage paused';
+        // Storage paused, but replacer is active
+        siteStatusBadge.className = 'status-badge badge-active';
+        siteStatusText.textContent = 'Active (Storage paused)';
       }
 
       if (activeSiteSwitches) {

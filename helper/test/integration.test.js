@@ -372,6 +372,17 @@ async function runTest() {
   assert.strictEqual(hostWhenPaused, false, 'Overlays must be deactivated when replacer switch is OFF on active site');
   console.log('[PASS] Replacer switch temporarily deactivates overlays on whitelisted site.');
 
+  // Verify badge shows ON (not PAUSE) when only replacer is paused
+  const badgeWhenReplacerPaused = await evalInSW(`
+    (async () => {
+      const [tab] = await chrome.tabs.query({ url: 'http://127.0.0.1:${PORT}/*' });
+      if (!tab) return 'no-tab';
+      return await chrome.action.getBadgeText({ tabId: tab.id });
+    })()
+  `);
+  assert.strictEqual(badgeWhenReplacerPaused, 'ON', 'Badge must stay ON when only replacer is paused because storage remains active');
+  console.log('[PASS] Badge stays ON (does not show PAUSE) when only replacer is paused.');
+
   // Re-enable replacer switch on active site
   console.log('[Per-Site Switch] Re-enabling replacer on 127.0.0.1:' + PORT + '...');
   await evalInSW(`
@@ -459,6 +470,17 @@ async function runTest() {
   assert.strictEqual(swState.rep, false);
   assert.strictEqual(swState.stor, false);
   console.log('[PASS] Both replacer and storage switches independently disabled on site.');
+
+  // Verify badge shows PAUSE when BOTH features are disabled
+  const badgeWhenBothPaused = await evalInSW(`
+    (async () => {
+      const [tab] = await chrome.tabs.query({ url: 'http://127.0.0.1:${PORT}/*' });
+      if (!tab) return 'no-tab';
+      return await chrome.action.getBadgeText({ tabId: tab.id });
+    })()
+  `);
+  assert.strictEqual(badgeWhenBothPaused, 'PAUSE', 'Badge must show PAUSE only when all features are disabled');
+  console.log('[PASS] Badge shows PAUSE when both replacer and storage are paused.');
 
   // 16. Test allowlist removal deactivation
   console.log('[Allowlist] Removing site from allowlist in storage...');

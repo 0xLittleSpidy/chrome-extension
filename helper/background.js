@@ -49,12 +49,38 @@ async function rebuildContextMenus() {
         });
       } else {
         snippets.forEach((item) => {
-          chrome.contextMenus.create({
-            id: `${CONTEXT_MENU_SNIPPET_PREFIX}${item.id}`,
-            parentId: CONTEXT_MENU_ROOT_ID,
-            title: `Copy: ${item.heading || 'Untitled Snippet'}`,
-            contexts: ['all']
-          });
+          const answers = Array.isArray(item.answers) && item.answers.length > 0
+            ? item.answers
+            : [item.description || ''];
+
+          if (answers.length > 1) {
+            // Parent menu for snippet with multiple answer options
+            chrome.contextMenus.create({
+              id: `${CONTEXT_MENU_SNIPPET_PREFIX}${item.id}`,
+              parentId: CONTEXT_MENU_ROOT_ID,
+              title: `Copy: ${item.heading || 'Untitled Snippet'} (${answers.length} options)`,
+              contexts: ['all']
+            });
+
+            // Sub-menu for each answer
+            answers.forEach((answerText, idx) => {
+              const preview = answerText.replace(/\s+/g, ' ').trim().slice(0, 36);
+              chrome.contextMenus.create({
+                id: `${CONTEXT_MENU_SNIPPET_PREFIX}${item.id}_ans_${idx}`,
+                parentId: `${CONTEXT_MENU_SNIPPET_PREFIX}${item.id}`,
+                title: `Option ${idx + 1}: ${preview}${answerText.length > 36 ? '...' : ''}`,
+                contexts: ['all']
+              });
+            });
+          } else {
+            // Single answer item
+            chrome.contextMenus.create({
+              id: `${CONTEXT_MENU_SNIPPET_PREFIX}${item.id}`,
+              parentId: CONTEXT_MENU_ROOT_ID,
+              title: `Copy: ${item.heading || 'Untitled Snippet'}`,
+              contexts: ['all']
+            });
+          }
         });
       }
     } catch (err) {
@@ -128,7 +154,10 @@ if (chrome.contextMenus && chrome.contextMenus.onClicked) {
     }
 
     if (typeof info.menuItemId === 'string' && info.menuItemId.startsWith(CONTEXT_MENU_SNIPPET_PREFIX)) {
-      const snippetId = info.menuItemId.substring(CONTEXT_MENU_SNIPPET_PREFIX.length);
+      const fullSnippetKey = info.menuItemId.substring(CONTEXT_MENU_SNIPPET_PREFIX.length);
+      const parts = fullSnippetKey.split('_ans_');
+      const snippetId = parts[0];
+      const answerIndex = parts.length > 1 ? parseInt(parts[1], 10) : -1;
 
       // Check if Active Site Storage Switch is enabled for this domain
       if (tab && tab.url) {
@@ -151,9 +180,22 @@ if (chrome.contextMenus && chrome.contextMenus.onClicked) {
         return;
       }
 
+      const answers = Array.isArray(snippet.answers) && snippet.answers.length > 0
+        ? snippet.answers
+        : [snippet.description || ''];
+
+      let textToCopy = snippet.description;
+      let optionLabel = snippet.heading;
+      if (answerIndex >= 0 && answerIndex < answers.length) {
+        textToCopy = answers[answerIndex];
+        optionLabel = `${snippet.heading} (Option ${answerIndex + 1})`;
+      } else if (answers[0]) {
+        textToCopy = answers[0];
+      }
+
       try {
-        await copyToClipboard(snippet.description);
-        await notifyUser('Helper: Snippet Copied', `"${snippet.heading}" copied to clipboard.`);
+        await copyToClipboard(textToCopy);
+        await notifyUser('Helper: Snippet Copied', `"${optionLabel}" copied to clipboard.`);
       } catch (err) {
         await notifyUser('Helper: Copy Error', 'Failed to copy snippet to clipboard.');
       }
@@ -184,17 +226,29 @@ async function updateBadgeForTab(tabId, url) {
           tabId,
           title: 'Helper: Active on this site'
         });
-      } else {
-        await chrome.action.setBadgeText({ tabId, text: 'PAUSE' });
-        await chrome.action.setBadgeBackgroundColor({ tabId, color: BADGE_COLOR_PAUSED });
-        const pauseReason = !isReplacerOn && !isStorageOn
-          ? 'Helper: All features paused on this site'
-          : !isReplacerOn
-          ? 'Helper: Replacer paused on this site'
-          : 'Helper: Storage paused on this site';
+      } else if (!isReplacerOn && isStorageOn) {
+        // Replacer is paused on this site, but snippet storage / Helper is still active
+        await chrome.action.setBadgeText({ tabId, text: 'ON' });
+        await chrome.action.setBadgeBackgroundColor({ tabId, color: BADGE_COLOR_ACTIVE });
         await chrome.action.setTitle({
           tabId,
-          title: pauseReason
+          title: 'Helper: Active on this site (Replacer paused, Snippets enabled)'
+        });
+      } else if (isReplacerOn && !isStorageOn) {
+        // Storage is paused, but replacer is active
+        await chrome.action.setBadgeText({ tabId, text: 'ON' });
+        await chrome.action.setBadgeBackgroundColor({ tabId, color: BADGE_COLOR_ACTIVE });
+        await chrome.action.setTitle({
+          tabId,
+          title: 'Helper: Active on this site (Storage paused, Replacer enabled)'
+        });
+      } else {
+        // Both replacer and storage features are paused
+        await chrome.action.setBadgeText({ tabId, text: 'PAUSE' });
+        await chrome.action.setBadgeBackgroundColor({ tabId, color: BADGE_COLOR_PAUSED });
+        await chrome.action.setTitle({
+          tabId,
+          title: 'Helper: All features paused on this site'
         });
       }
     } else {

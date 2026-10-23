@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -34,6 +34,12 @@
       </nav>
 
       <div class="sidebar-footer">
+        <button id="theme-toggle-btn" class="btn-theme-toggle" type="button" aria-label="Toggle theme">
+          <span id="theme-toggle-label">Theme: Dark</span>
+        </button>
+        <button id="sidebar-file-btn" class="btn-file-setup" type="button">
+          <span>Data File Setup</span>
+        </button>
         <p class="version-tag">Helper v2.0.0</p>
       </div>
     </aside>
@@ -42,6 +48,19 @@
     <main class="main-content">
       <!-- Global Feedback Toast -->
       <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+      <!-- Storage File Setup Banner -->
+      <div id="storage-setup-banner" class="setup-banner" style="display: none;">
+        <div class="setup-banner-content">
+          <h3 class="setup-banner-title">Store or Select Data File</h3>
+          <p class="setup-banner-desc">Save your snippets, replacement rules, and whitelist to a local file, or select your existing file to sync.</p>
+        </div>
+        <div class="setup-banner-actions">
+          <button id="banner-store-file-btn" class="btn btn-primary btn-sm">Store to File (helper-data.json)</button>
+          <button id="banner-select-file-btn" class="btn btn-secondary btn-sm">Select Existing File</button>
+          <button id="banner-dismiss-btn" class="btn btn-ghost btn-sm">Dismiss</button>
+        </div>
+      </div>
 
       <!-- Tab 1: Whitelist -->
       <section id="tab-whitelist" class="tab-panel active">
@@ -110,15 +129,48 @@
               />
             </div>
 
+            <!-- Multi-Answer Management Section -->
             <div class="form-group">
-              <label for="snippet-description" class="form-label">Description (Text copied to clipboard)</label>
-              <textarea 
-                id="snippet-description" 
-                class="form-textarea" 
-                rows="4" 
-                placeholder="Enter the full text content to store and copy..." 
-                required
-              ></textarea>
+              <div class="answers-header-row">
+                <div>
+                  <span class="form-label">Answer Options (Multiple responses supported)</span>
+                  <p class="form-help-text">Add multiple answer options if this note has different replies. Select which one to copy anytime.</p>
+                </div>
+                <div class="answers-btn-group">
+                  <button type="button" id="snippet-add-answer-btn" class="btn btn-secondary btn-sm">+ Add Answer Option</button>
+                  <button type="button" id="snippet-remove-answer-btn" class="btn btn-danger btn-sm" style="display: none;">Delete Current Option</button>
+                </div>
+              </div>
+              <div id="snippet-answers-nav" class="answers-nav">
+                <!-- Dynamically generated answer chips/tabs -->
+              </div>
+            </div>
+
+            <!-- Side-by-Side Markdown Editor and Live Viewer -->
+            <div class="markdown-split-container">
+              <div class="markdown-pane">
+                <div class="pane-header">
+                  <label for="snippet-description" id="snippet-description-label" class="form-label">Markdown Description (Option 1)</label>
+                  <span class="pane-badge">Markdown Editor</span>
+                </div>
+                <textarea 
+                  id="snippet-description" 
+                  class="form-textarea markdown-textarea" 
+                  rows="7" 
+                  placeholder="Type Markdown text: **bold**, *italic*, # Heading, - list, `code`, [link](url)..." 
+                  required
+                ></textarea>
+              </div>
+
+              <div class="markdown-pane">
+                <div class="pane-header">
+                  <span class="form-label">Live Markdown Preview</span>
+                  <span class="pane-badge badge-preview">Live Viewer</span>
+                </div>
+                <div id="snippet-markdown-preview" class="markdown-preview-pane">
+                  <p class="markdown-placeholder">Preview will render here in real time...</p>
+                </div>
+              </div>
             </div>
 
             <div class="form-actions">
@@ -232,6 +284,7 @@
           <p class="card-subtext">Download your complete configuration including all snippets, replacer rules, and whitelisted sites as a single JSON file.</p>
           <div class="form-actions">
             <button id="export-json-btn" class="btn btn-primary">Download JSON File</button>
+            <button id="picker-save-btn" class="btn btn-secondary" type="button">Store to File (helper-data.json)</button>
           </div>
         </div>
 
@@ -239,6 +292,10 @@
           <h3 class="card-title">Import Settings</h3>
           <p class="card-subtext">Upload a previously exported JSON file to restore or synchronize your snippets and rules.</p>
           
+          <div class="form-actions" style="margin-bottom: 12px;">
+            <button id="picker-open-btn" class="btn btn-secondary" type="button">Select Existing File via Picker</button>
+          </div>
+
           <div class="import-drop-zone">
             <input type="file" id="import-file-input" accept=".json,application/json" class="file-input">
             <label for="import-file-input" class="file-label">
