@@ -177,19 +177,32 @@ console.log('--- RUNNING UNIT TESTS ---');
   };
 
   // Mock chrome.storage for Node environment test
-  const storageStore = {};
+  const syncStore = {};
+  const localStore = {};
   global.chrome = {
     storage: {
       sync: {
         get: async (keys) => {
           const res = {};
           for (const k of keys) {
-            if (storageStore[k] !== undefined) res[k] = storageStore[k];
+            if (syncStore[k] !== undefined) res[k] = syncStore[k];
           }
           return res;
         },
         set: async (obj) => {
-          Object.assign(storageStore, obj);
+          Object.assign(syncStore, obj);
+        }
+      },
+      local: {
+        get: async (keys) => {
+          const res = {};
+          for (const k of keys) {
+            if (localStore[k] !== undefined) res[k] = localStore[k];
+          }
+          return res;
+        },
+        set: async (obj) => {
+          Object.assign(localStore, obj);
         }
       }
     }
@@ -248,6 +261,42 @@ console.log('--- RUNNING UNIT TESTS ---');
   await StorageManager.deleteSnippet(legacySnip.id);
   snips = await StorageManager.getSnippets();
   assert.strictEqual(snips.length, 1);
+
+  // Test Snippets Scale Past 22 Items Limit (Testing 50 items)
+  for (let i = 2; i <= 50; i++) {
+    await StorageManager.saveSnippet({
+      id: `snip-scale-${i}`,
+      heading: `Snippet ${i} Heading`,
+      description: `Description option 1 for snippet ${i} with detailed instructions.`,
+      answers: [
+        `Description option 1 for snippet ${i} with detailed instructions.`,
+        `Alternative option 2 for snippet ${i} with further notes.`
+      ]
+    });
+  }
+  const scaledSnippets = await StorageManager.getSnippets();
+  assert.strictEqual(scaledSnippets.length, 50, 'StorageManager must reliably store and return 50+ snippets without quota limits');
+  const snip50 = scaledSnippets.find(s => s.id === 'snip-scale-50');
+  assert.ok(snip50, 'Snippet 50 must exist');
+  assert.strictEqual(snip50.answers.length, 2);
+
+  // Clean up scaled snippets
+  for (let i = 2; i <= 50; i++) {
+    await StorageManager.deleteSnippet(`snip-scale-${i}`);
+  }
+  const cleanedSnippets = await StorageManager.getSnippets();
+  assert.strictEqual(cleanedSnippets.length, 1);
+
+  // Test Sync-to-Local Snippet Migration
+  localStore.snippets = undefined;
+  syncStore.snippets = [
+    { id: 'migrated-1', heading: 'Migrated Heading', description: 'Migrated text', answers: ['Migrated text'] }
+  ];
+  const migratedResult = await StorageManager.getSnippets();
+  assert.strictEqual(migratedResult.length, 1);
+  assert.strictEqual(migratedResult[0].heading, 'Migrated Heading');
+  assert.ok(Array.isArray(localStore.snippets), 'Snippets must have been migrated to local storage');
+  assert.strictEqual(localStore.snippets[0].heading, 'Migrated Heading');
 
   // Test Theme Management (Dark Theme Default)
   assert.strictEqual(await StorageManager.getTheme(), 'dark', 'Theme should default to dark');

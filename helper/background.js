@@ -276,7 +276,7 @@ chrome.tabs.onActivated.addListener(async (activeInfo) => {
 });
 
 // Update tabs and menus when storage changes
-chrome.storage.onChanged.addListener(async (changes) => {
+chrome.storage.onChanged.addListener(async (changes, areaName) => {
   if (changes.allowlist || changes.site_replacer_state || changes.site_storage_state) {
     try {
       const tabs = await chrome.tabs.query({});
@@ -291,6 +291,13 @@ chrome.storage.onChanged.addListener(async (changes) => {
   }
 
   if (changes.snippets) {
+    if (areaName === 'sync' && Array.isArray(changes.snippets.newValue)) {
+      try {
+        await chrome.storage.local.set({ snippets: changes.snippets.newValue });
+      } catch (err) {
+        // Ignore
+      }
+    }
     await rebuildContextMenus();
   }
 });

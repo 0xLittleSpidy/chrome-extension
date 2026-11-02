@@ -73,6 +73,36 @@
     return null;
   }
 
+  function getLocalStorageArea() {
+    if (typeof chrome !== 'undefined' && chrome.storage) {
+      return chrome.storage.local || chrome.storage.sync;
+    }
+    return null;
+  }
+
+  function getSyncStorageArea() {
+    if (typeof chrome !== 'undefined' && chrome.storage) {
+      return chrome.storage.sync || chrome.storage.local;
+    }
+    return null;
+  }
+
+  function normalizeSnippets(rawList) {
+    if (!Array.isArray(rawList)) return [];
+    return rawList
+      .filter(item => item && item.heading)
+      .map(item => {
+        const answers = Array.isArray(item.answers) && item.answers.length > 0
+          ? item.answers
+          : [item.description || ''];
+        return {
+          ...item,
+          answers: answers,
+          description: item.description || answers[0] || ''
+        };
+      });
+  }
+
   async function getFromStorage(keys) {
     const storage = getStorageArea();
     if (!storage) return {};
@@ -106,7 +136,6 @@
       STORAGE_KEYS.ALLOWLIST,
       STORAGE_KEYS.SITE_REPLACER_STATE,
       STORAGE_KEYS.SITE_STORAGE_STATE,
-      STORAGE_KEYS.SNIPPETS,
       STORAGE_KEYS.REPLACER_RULES
     ]);
 
@@ -120,15 +149,37 @@
     if (!data[STORAGE_KEYS.SITE_STORAGE_STATE] || typeof data[STORAGE_KEYS.SITE_STORAGE_STATE] !== 'object') {
       updates[STORAGE_KEYS.SITE_STORAGE_STATE] = {};
     }
-    if (!Array.isArray(data[STORAGE_KEYS.SNIPPETS]) || data[STORAGE_KEYS.SNIPPETS].length === 0) {
-      updates[STORAGE_KEYS.SNIPPETS] = DEFAULT_SNIPPETS;
-    }
     if (!Array.isArray(data[STORAGE_KEYS.REPLACER_RULES]) || data[STORAGE_KEYS.REPLACER_RULES].length === 0) {
       updates[STORAGE_KEYS.REPLACER_RULES] = DEFAULT_RULES;
     }
 
     if (Object.keys(updates).length > 0) {
       await setToStorage(updates);
+    }
+
+    // Initialize snippets in local storage; migrate from sync if already present
+    const localArea = getLocalStorageArea();
+    if (localArea) {
+      let localData = {};
+      try {
+        localData = await localArea.get([STORAGE_KEYS.SNIPPETS]);
+      } catch (err) {}
+
+      if (!Array.isArray(localData[STORAGE_KEYS.SNIPPETS])) {
+        let existingSyncSnippets = null;
+        const syncArea = getSyncStorageArea();
+        if (syncArea && syncArea !== localArea) {
+          try {
+            const syncData = await syncArea.get([STORAGE_KEYS.SNIPPETS]);
+            if (Array.isArray(syncData[STORAGE_KEYS.SNIPPETS]) && syncData[STORAGE_KEYS.SNIPPETS].length > 0) {
+              existingSyncSnippets = syncData[STORAGE_KEYS.SNIPPETS];
+            }
+          } catch (err) {}
+        }
+        await localArea.set({
+          [STORAGE_KEYS.SNIPPETS]: existingSyncSnippets || DEFAULT_SNIPPETS
+        });
+      }
     }
   }
 
@@ -179,19 +230,33 @@
 
   // --- Snippets API ---
   async function getSnippets() {
-    const data = await getFromStorage([STORAGE_KEYS.SNIPPETS]);
-    if (Array.isArray(data[STORAGE_KEYS.SNIPPETS])) {
-      return data[STORAGE_KEYS.SNIPPETS].map(item => {
-        const answers = Array.isArray(item.answers) && item.answers.length > 0
-          ? item.answers
-          : [item.description || ''];
-        return {
-          ...item,
-          answers: answers,
-          description: item.description || answers[0] || ''
-        };
-      });
+    const localArea = getLocalStorageArea();
+    if (localArea) {
+      try {
+        const localData = await localArea.get([STORAGE_KEYS.SNIPPETS]);
+        if (Array.isArray(localData[STORAGE_KEYS.SNIPPETS])) {
+          return normalizeSnippets(localData[STORAGE_KEYS.SNIPPETS]);
+        }
+      } catch (err) {}
     }
+
+    // Check sync storage for migration if not found in local storage
+    const syncArea = getSyncStorageArea();
+    if (syncArea && syncArea !== localArea) {
+      try {
+        const syncData = await syncArea.get([STORAGE_KEYS.SNIPPETS]);
+        if (Array.isArray(syncData[STORAGE_KEYS.SNIPPETS]) && syncData[STORAGE_KEYS.SNIPPETS].length > 0) {
+          const migrated = normalizeSnippets(syncData[STORAGE_KEYS.SNIPPETS]);
+          if (localArea) {
+            try {
+              await localArea.set({ [STORAGE_KEYS.SNIPPETS]: migrated });
+            } catch (err) {}
+          }
+          return migrated;
+        }
+      } catch (err) {}
+    }
+
     return DEFAULT_SNIPPETS;
   }
 
@@ -226,7 +291,22 @@
     } else {
       list.push(cleanSnippet);
     }
-    await setToStorage({ [STORAGE_KEYS.SNIPPETS]: list });
+
+    const localArea = getLocalStorageArea();
+    if (localArea) {
+      await localArea.set({ [STORAGE_KEYS.SNIPPETS]: list });
+    }
+
+    // Best-effort sync backup if size permits; quota errors are safely ignored
+    const syncArea = getSyncStorageArea();
+    if (syncArea && syncArea !== localArea) {
+      try {
+        await syncArea.set({ [STORAGE_KEYS.SNIPPETS]: list });
+      } catch (err) {
+        // Quota exceeded in sync; local storage remains the robust primary source
+      }
+    }
+
     return cleanSnippet;
   }
 
@@ -234,7 +314,18 @@
     if (!snippetId) return;
     const list = await getSnippets();
     const updated = list.filter(item => item.id !== snippetId);
-    await setToStorage({ [STORAGE_KEYS.SNIPPETS]: updated });
+
+    const localArea = getLocalStorageArea();
+    if (localArea) {
+      await localArea.set({ [STORAGE_KEYS.SNIPPETS]: updated });
+    }
+
+    const syncArea = getSyncStorageArea();
+    if (syncArea && syncArea !== localArea) {
+      try {
+        await syncArea.set({ [STORAGE_KEYS.SNIPPETS]: updated });
+      } catch (err) {}
+    }
   }
 
   // --- Replacer Rules API ---
@@ -311,24 +402,36 @@
     if (Array.isArray(parsed.allowlist)) {
       updates[STORAGE_KEYS.ALLOWLIST] = parsed.allowlist;
     }
-    if (Array.isArray(parsed.snippets)) {
-      updates[STORAGE_KEYS.SNIPPETS] = parsed.snippets
-        .filter(s => s && s.heading)
-        .map(s => ({
-          ...s,
-          answers: Array.isArray(s.answers) && s.answers.length > 0 ? s.answers : [s.description || ''],
-          description: s.description || (Array.isArray(s.answers) && s.answers[0]) || ''
-        }));
-    }
     if (Array.isArray(parsed.replacer_rules)) {
       updates[STORAGE_KEYS.REPLACER_RULES] = parsed.replacer_rules.filter(r => r && r.find);
     }
 
-    if (Object.keys(updates).length === 0) {
+    let hasSnippets = false;
+    if (Array.isArray(parsed.snippets)) {
+      hasSnippets = true;
+      const cleanSnippets = normalizeSnippets(parsed.snippets);
+      const localArea = getLocalStorageArea();
+      if (localArea) {
+        await localArea.set({ [STORAGE_KEYS.SNIPPETS]: cleanSnippets });
+      }
+      const syncArea = getSyncStorageArea();
+      if (syncArea && syncArea !== localArea) {
+        try {
+          await syncArea.set({ [STORAGE_KEYS.SNIPPETS]: cleanSnippets });
+        } catch (err) {}
+      }
+      updates[STORAGE_KEYS.SNIPPETS] = cleanSnippets;
+    }
+
+    if (Object.keys(updates).length === 0 && !hasSnippets) {
       throw new Error('No valid settings, snippets, or rules found in file');
     }
 
-    await setToStorage(updates);
+    const nonSnippetUpdates = { ...updates };
+    delete nonSnippetUpdates[STORAGE_KEYS.SNIPPETS];
+    if (Object.keys(nonSnippetUpdates).length > 0) {
+      await setToStorage(nonSnippetUpdates);
+    }
     return updates;
   }
 

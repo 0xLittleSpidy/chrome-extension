@@ -505,6 +505,28 @@ async function runTest() {
   assert.strictEqual(snippetData[0].heading, 'Quick Intro');
   console.log('[PASS] Snippets stored persistently in extension storage.');
 
+  // 14b. Test Scaling Beyond 22 Snippets in Real Chrome Storage
+  console.log('[Snippets Scale] Testing 30 snippets in live Chrome storage...');
+  const scaleCount = await evalInSW(`
+    (async () => {
+      for (let i = 1; i <= 30; i++) {
+        await StorageManager.saveSnippet({
+          id: 'snip-live-' + i,
+          heading: 'Live Snippet ' + i,
+          description: 'Description for snippet ' + i + ' with detailed troubleshooting steps.',
+          answers: [
+            'Description for snippet ' + i + ' with detailed troubleshooting steps.',
+            'Alternative resolution step ' + i
+          ]
+        });
+      }
+      const all = await StorageManager.getSnippets();
+      return all.length;
+    })()
+  `);
+  assert(scaleCount >= 30, 'StorageManager must store 30+ snippets without quota failure in live Chrome');
+  console.log('[PASS] Successfully saved and retrieved ' + scaleCount + ' snippets in live Chrome.');
+
   // 15. Test both switches disabled (multi-switch status)
   console.log('[Multi-Switch] Disabling both replacer and storage on site...');
   await evalInSW(`
