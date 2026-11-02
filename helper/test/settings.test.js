@@ -52,6 +52,7 @@ const requiredSettingsIds = [
   'import-confirm-btn',
   // Global
   'toast',
+  'settings-sync-indicator',
   // Theme & File Persistence
   'theme-toggle-btn',
   'storage-setup-banner',

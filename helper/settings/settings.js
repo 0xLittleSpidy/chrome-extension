@@ -181,6 +181,32 @@ document.addEventListener('DOMContentLoaded', async () => {
     }, 3200);
   }
 
+  // --- Auto-Sync Indicator Controller ---
+  const settingsSyncIndicator = document.getElementById('settings-sync-indicator');
+  const syncLabel = settingsSyncIndicator ? settingsSyncIndicator.querySelector('span') : null;
+
+  function triggerSyncPulse(message = 'Syncing...') {
+    if (settingsSyncIndicator) {
+      settingsSyncIndicator.classList.add('syncing');
+      if (syncLabel) syncLabel.textContent = message;
+      setTimeout(() => {
+        settingsSyncIndicator.classList.remove('syncing');
+        if (syncLabel) syncLabel.textContent = 'Synced';
+      }, 1000);
+    }
+  }
+
+  if (settingsSyncIndicator) {
+    settingsSyncIndicator.addEventListener('click', () => {
+      triggerSyncPulse('Syncing...');
+      showToast('All settings and storage synchronized');
+    });
+  }
+
+  chrome.storage.onChanged.addListener(() => {
+    triggerSyncPulse('Syncing...');
+  });
+
   // --- Theme Controller ---
   async function initTheme() {
     const currentTheme = await StorageManager.getTheme();

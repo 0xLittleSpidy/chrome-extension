@@ -16,6 +16,8 @@
   let shadowRoot = null;
   let hostElement = null;
   let floatingTooltip = null;
+  let headerFloatingBar = null;
+  let activeFocusedElement = null;
   let resizeObserver = null;
   let mutationObserver = null;
   let lastKnownUrl = window.location.href;
@@ -43,8 +45,9 @@
         : (typeof TextScanner !== 'undefined' && TextScanner.DEFAULT_RULES ? TextScanner.DEFAULT_RULES : []);
 
       const allowed = AllowlistUtils.isUrlAllowed(window.location.href, allowlist);
-      const domain = AllowlistUtils.getSiteIdentifier(window.location.href);
-      const replacerEnabledOnSite = siteReplacerState[domain] !== false;
+      const matchedPattern = AllowlistUtils.getMatchingPattern(window.location.href, allowlist);
+      const siteKey = matchedPattern || AllowlistUtils.getSiteIdentifier(window.location.href);
+      const replacerEnabledOnSite = siteReplacerState[siteKey] !== false;
 
       const shouldBeActive = Boolean(allowed && replacerEnabledOnSite);
 
@@ -85,6 +88,48 @@
     floatingTooltip.style.display = 'none';
     shadowRoot.appendChild(floatingTooltip);
 
+    // Create shared floating bar for Cookie and Authorization headers
+    headerFloatingBar = document.createElement('div');
+    headerFloatingBar.className = 'helper-header-floating-bar';
+    headerFloatingBar.style.display = 'none';
+
+    const barLabel = document.createElement('span');
+    barLabel.className = 'helper-bar-label';
+    barLabel.textContent = 'Headers';
+    headerFloatingBar.appendChild(barLabel);
+
+    const btnContainer = document.createElement('div');
+    btnContainer.className = 'helper-bar-buttons';
+
+    const buttonsConfig = [
+      { text: 'Truncate', action: 'truncate', isRed: false },
+      { text: 'Redact', action: 'redact', isRed: false },
+      { text: 'Red Color Truncate', action: 'red-color-truncate', isRed: true },
+      { text: 'Red Color Redact', action: 'red-color-redact', isRed: true }
+    ];
+
+    buttonsConfig.forEach(cfg => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'helper-bar-btn' + (cfg.isRed ? ' helper-bar-btn-red' : '');
+      btn.textContent = cfg.text;
+      btn.dataset.action = cfg.action;
+      btn.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+      });
+      btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (activeFocusedElement) {
+          handleHeaderAction(activeFocusedElement, cfg.action);
+        }
+      });
+      btnContainer.appendChild(btn);
+    });
+
+    headerFloatingBar.appendChild(btnContainer);
+    shadowRoot.appendChild(headerFloatingBar);
+
     const targetContainer = document.body || document.documentElement;
     targetContainer.appendChild(hostElement);
   }
@@ -123,6 +168,177 @@
     if (!floatingTooltip) return;
     floatingTooltip.classList.remove('is-tooltip-visible');
     floatingTooltip.style.display = 'none';
+  }
+
+  /**
+   * Checks if text contains sensitive headers (Cookie or Authorization).
+   */
+  function hasSensitiveHeaders(text) {
+    if (!text || typeof text !== 'string') return false;
+    return /\b(cookie|authorization)\s*:/i.test(text);
+  }
+
+  /**
+   * Checks if text contains redacted or truncated tokens.
+   */
+  function hasRedactedTokens(text) {
+    if (!text || typeof text !== 'string') return false;
+    return /\[(?:redacted|truncated)\]/i.test(text);
+  }
+
+  /**
+   * Transforms headers by preserving first 3 and last 3 characters of secrets.
+   */
+  function transformHeaders(fullText, mode) {
+    const tag = (mode === 'truncate') ? '[truncated]' : '[redacted]';
+
+    // Cookie headers: cookie:\s*([^\r\n]+)
+    let transformed = fullText.replace(/(cookie\s*:\s*)([^\r\n]+)/gi, (match, prefix, cookiesStr) => {
+      const pairs = cookiesStr.split(';');
+      const newPairs = pairs.map(pair => {
+        const eqIdx = pair.indexOf('=');
+        if (eqIdx === -1) return pair;
+        const keyPart = pair.slice(0, eqIdx + 1);
+        const valPart = pair.slice(eqIdx + 1);
+        const trimmedVal = valPart.trim();
+        const leadingSpaces = valPart.match(/^\s*/)[0];
+        const trailingSpaces = valPart.match(/\s*$/)[0];
+
+        let newVal;
+        if (trimmedVal.length <= 6) {
+          newVal = tag;
+        } else {
+          newVal = trimmedVal.slice(0, 3) + tag + trimmedVal.slice(-3);
+        }
+        return keyPart + leadingSpaces + newVal + trailingSpaces;
+      });
+      return prefix + newPairs.join(';');
+    });
+
+    // Authorization headers: authorization:\s*([^\r\n]+)
+    transformed = transformed.replace(/(authorization\s*:\s*)([^\r\n]+)/gi, (match, prefix, authVal) => {
+      const trimmedVal = authVal.trim();
+      const leadingSpaces = authVal.match(/^\s*/)[0];
+      const trailingSpaces = authVal.match(/\s*$/)[0];
+
+      const authMatch = trimmedVal.match(/^([a-zA-Z0-9_-]+\s+)(.*)$/);
+      let authScheme = '';
+      let token = trimmedVal;
+      if (authMatch) {
+        authScheme = authMatch[1];
+        token = authMatch[2];
+      }
+
+      let newToken;
+      if (token.length <= 6) {
+        newToken = tag;
+      } else {
+        newToken = token.slice(0, 3) + tag + token.slice(-3);
+      }
+
+      return prefix + leadingSpaces + authScheme + newToken + trailingSpaces;
+    });
+
+    return transformed;
+  }
+
+  /**
+   * Formats HTML content for contenteditable elements with bold tags and optional red endpoints.
+   */
+  function formatContentEditableHeaders(transformedText, mode, useRed) {
+    const escapedTag = (mode === 'truncate') ? '\\[truncated\\]' : '\\[redacted\\]';
+    const regex = new RegExp(`([a-zA-Z0-9_\\-]{1,3})?(${escapedTag})([a-zA-Z0-9_\\-]{1,3})?`, 'g');
+
+    return transformedText.replace(regex, (m, first3, tagMatch, last3) => {
+      let out = '';
+      if (first3) {
+        out += useRed ? `<span style="color: #dc2626; font-weight: bold;">${first3}</span>` : first3;
+      }
+      out += `<b>${tagMatch}</b>`;
+      if (last3) {
+        out += useRed ? `<span style="color: #dc2626; font-weight: bold;">${last3}</span>` : last3;
+      }
+      return out;
+    });
+  }
+
+  /**
+   * Checks whether the element contains headers and positions the floating bar.
+   */
+  function checkAndShowHeaderFloatingBar(element) {
+    if (!element || !headerFloatingBar || !isEnabledOnThisPage) return;
+    const text = getElementText(element);
+    if (!hasSensitiveHeaders(text)) {
+      if (activeFocusedElement === element) {
+        hideHeaderFloatingBar();
+      }
+      return;
+    }
+
+    activeFocusedElement = element;
+    showHeaderFloatingBar(element);
+  }
+
+  /**
+   * Positions and displays the floating header action bar.
+   */
+  function showHeaderFloatingBar(element) {
+    if (!headerFloatingBar || !isElementVisible(element)) return;
+
+    headerFloatingBar.style.display = 'flex';
+    const elemRect = element.getBoundingClientRect();
+    const barRect = headerFloatingBar.getBoundingClientRect();
+
+    let top = elemRect.top - barRect.height - 8;
+    if (top < 6) {
+      top = elemRect.bottom + 8;
+    }
+
+    let left = elemRect.left;
+    if (left < 6) left = 6;
+    const maxLeft = window.innerWidth - barRect.width - 6;
+    if (left > maxLeft) left = maxLeft;
+
+    headerFloatingBar.style.top = `${top}px`;
+    headerFloatingBar.style.left = `${left}px`;
+  }
+
+  /**
+   * Hides the floating header action bar.
+   */
+  function hideHeaderFloatingBar() {
+    if (!headerFloatingBar) return;
+    headerFloatingBar.style.display = 'none';
+  }
+
+  /**
+   * Executes header redaction or truncation on the target element.
+   */
+  function handleHeaderAction(element, action) {
+    if (!element) return;
+    const currentText = getElementText(element);
+    const mode = (action === 'truncate' || action === 'red-color-truncate') ? 'truncate' : 'redact';
+    const useRed = (action === 'red-color-truncate' || action === 'red-color-redact');
+
+    const transformed = transformHeaders(currentText, mode);
+
+    const record = trackedElements.get(element);
+    if (record) {
+      record.useRed = useRed;
+    }
+
+    if (element.isContentEditable) {
+      element.innerHTML = formatContentEditableHeaders(transformed, mode, useRed);
+    } else {
+      setNativeValue(element, transformed);
+    }
+
+    // Dispatch input & change events for modern frameworks
+    element.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
+    element.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
+
+    updateOverlayForElement(element);
+    checkAndShowHeaderFloatingBar(element);
   }
 
   /**
@@ -207,7 +423,10 @@
     trackedElements.clear();
 
     hideFloatingTooltip();
+    hideHeaderFloatingBar();
     floatingTooltip = null;
+    headerFloatingBar = null;
+    activeFocusedElement = null;
 
     if (hostElement && hostElement.parentNode) {
       hostElement.remove();
@@ -319,20 +538,48 @@
   function registerField(element) {
     if (trackedElements.has(element)) return;
 
-    const onUpdate = () => updateOverlayForElement(element);
-    const onScroll = () => syncScroll(element);
+    const onUpdate = () => {
+      updateOverlayForElement(element);
+      if (document.activeElement === element) {
+        checkAndShowHeaderFloatingBar(element);
+      }
+    };
+
+    const onScroll = () => {
+      syncScroll(element);
+      if (activeFocusedElement === element && headerFloatingBar && headerFloatingBar.style.display !== 'none') {
+        showHeaderFloatingBar(element);
+      }
+    };
+
+    const onFocus = () => {
+      checkAndShowHeaderFloatingBar(element);
+    };
+
+    const onBlur = () => {
+      setTimeout(() => {
+        if (activeFocusedElement === element && document.activeElement !== element) {
+          hideHeaderFloatingBar();
+        }
+      }, 250);
+    };
 
     element.addEventListener('input', onUpdate);
     element.addEventListener('keyup', onUpdate);
     element.addEventListener('change', onUpdate);
     element.addEventListener('paste', onUpdate);
-    element.addEventListener('focus', onUpdate);
+    element.addEventListener('focus', onFocus);
+    element.addEventListener('click', onFocus);
+    element.addEventListener('blur', onBlur);
     element.addEventListener('scroll', onScroll, { passive: true });
 
     const record = {
       overlay: null,
       onUpdate,
-      onScroll
+      onScroll,
+      onFocus,
+      onBlur,
+      useRed: false
     };
 
     trackedElements.set(element, record);
@@ -340,8 +587,11 @@
       resizeObserver.observe(element);
     }
 
-    // Initial overlay update
+    // Initial overlay update and header check
     updateOverlayForElement(element);
+    if (document.activeElement === element) {
+      checkAndShowHeaderFloatingBar(element);
+    }
   }
 
   /**
@@ -350,6 +600,11 @@
   function unregisterField(element) {
     const record = trackedElements.get(element);
     if (!record) return;
+
+    if (activeFocusedElement === element) {
+      hideHeaderFloatingBar();
+      activeFocusedElement = null;
+    }
 
     if (resizeObserver) {
       resizeObserver.unobserve(element);
@@ -367,7 +622,13 @@
     element.removeEventListener('keyup', record.onUpdate);
     element.removeEventListener('change', record.onUpdate);
     element.removeEventListener('paste', record.onUpdate);
-    element.removeEventListener('focus', record.onUpdate);
+    if (record.onFocus) {
+      element.removeEventListener('focus', record.onFocus);
+      element.removeEventListener('click', record.onFocus);
+    }
+    if (record.onBlur) {
+      element.removeEventListener('blur', record.onBlur);
+    }
     element.removeEventListener('scroll', record.onScroll);
   }
 
@@ -384,6 +645,7 @@
       } else {
         updateOverlayForElement(target);
       }
+      checkAndShowHeaderFloatingBar(target);
     }
   }
 
@@ -426,8 +688,9 @@
 
     const text = getElementText(element);
     const scanResult = TextScanner.scanTextWithRules(text, activeRules);
+    const hasRedacted = hasRedactedTokens(text);
 
-    if (!scanResult.hasMatches) {
+    if (!scanResult.hasMatches && !hasRedacted) {
       if (record.overlay) {
         record.overlay.style.display = 'none';
       }
@@ -512,57 +775,127 @@
   }
 
   /**
-   * Renders the mirrored transparent text with underlined yellow marks for "is" or "are".
+   * Renders the mirrored transparent text with underlined yellow marks for "is" or "are"
+   * as well as bold redacted tags and red endpoint highlights.
    */
   function renderOverlayContent(element, overlay, text, scanResult) {
     overlay.innerHTML = '';
     const fragment = document.createDocumentFragment();
-    let currentIndex = 0;
+    const record = trackedElements.get(element);
+    const useRed = record ? Boolean(record.useRed) : false;
 
-    for (const match of scanResult.allMatches) {
-      // Append text preceding the match
-      if (match.start > currentIndex) {
-        const precedingText = text.substring(currentIndex, match.start);
+    // Collect all highlight markers
+    const markers = [];
+
+    // Replacer matches
+    if (scanResult && Array.isArray(scanResult.allMatches)) {
+      for (const m of scanResult.allMatches) {
+        markers.push({
+          start: m.start,
+          end: m.end,
+          type: 'replacer',
+          word: m.word,
+          replacement: m.replacement
+        });
+      }
+    }
+
+    // Redaction and Truncation matches
+    const tokenRegex = /(\[redacted\]|\[truncated\])/gi;
+    let match;
+    while ((match = tokenRegex.exec(text)) !== null) {
+      const tokenStart = match.index;
+      const tokenEnd = tokenStart + match[0].length;
+
+      if (useRed) {
+        const first3Start = Math.max(0, tokenStart - 3);
+        const first3End = tokenStart;
+        if (first3End > first3Start) {
+          markers.push({
+            start: first3Start,
+            end: first3End,
+            type: 'endpoint-red',
+            text: text.substring(first3Start, first3End)
+          });
+        }
+
+        markers.push({
+          start: tokenStart,
+          end: tokenEnd,
+          type: 'redacted-tag',
+          text: match[0]
+        });
+
+        const last3Start = tokenEnd;
+        const last3End = Math.min(text.length, tokenEnd + 3);
+        if (last3End > last3Start) {
+          markers.push({
+            start: last3Start,
+            end: last3End,
+            type: 'endpoint-red',
+            text: text.substring(last3Start, last3End)
+          });
+        }
+      } else {
+        markers.push({
+          start: tokenStart,
+          end: tokenEnd,
+          type: 'redacted-tag',
+          text: match[0]
+        });
+      }
+    }
+
+    // Sort markers by start index
+    markers.sort((a, b) => a.start - b.start || (a.type === 'redacted-tag' ? -1 : 1));
+
+    let currentIndex = 0;
+    for (const marker of markers) {
+      if (marker.start < currentIndex) {
+        continue;
+      }
+
+      if (marker.start > currentIndex) {
+        const precedingText = text.substring(currentIndex, marker.start);
         fragment.appendChild(document.createTextNode(precedingText));
       }
 
-      // Create highlight mark for "is" or "are"
-      const mark = document.createElement('mark');
-      mark.className = 'is-highlight-word';
-      mark.dataset.start = String(match.start);
-      mark.dataset.end = String(match.end);
-      mark.dataset.word = match.word;
-      mark.dataset.replacement = match.replacement;
-      mark.dataset.elementId = element.id || '';
-      mark.title = `Click to replace with '${match.replacement}'`;
-      mark.appendChild(document.createTextNode(match.word));
+      if (marker.type === 'replacer') {
+        const mark = document.createElement('mark');
+        mark.className = 'is-highlight-word';
+        mark.dataset.start = String(marker.start);
+        mark.dataset.end = String(marker.end);
+        mark.dataset.word = marker.word;
+        mark.dataset.replacement = marker.replacement;
+        mark.dataset.elementId = element.id || '';
+        mark.title = `Click to replace with '${marker.replacement}'`;
+        mark.appendChild(document.createTextNode(marker.word));
 
-      // Prevent losing focus on mousedown
-      mark.addEventListener('mousedown', (e) => {
-        e.preventDefault();
-      });
+        mark.addEventListener('mousedown', (e) => e.preventDefault());
+        mark.addEventListener('mouseenter', () => showFloatingTooltip(mark, marker.replacement));
+        mark.addEventListener('mouseleave', () => hideFloatingTooltip());
+        mark.addEventListener('click', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          hideFloatingTooltip();
+          handleWordReplacement(element, marker.start, marker.end, marker.replacement);
+        });
+        fragment.appendChild(mark);
+      } else if (marker.type === 'redacted-tag') {
+        const b = document.createElement('b');
+        b.className = 'helper-redacted-tag';
+        b.appendChild(document.createTextNode(marker.text));
+        fragment.appendChild(b);
+      } else if (marker.type === 'endpoint-red') {
+        const span = document.createElement('span');
+        span.className = 'helper-redacted-endpoint-red';
+        span.appendChild(document.createTextNode(marker.text));
+        fragment.appendChild(span);
+      }
 
-      // Show/hide instant unclipped floating tooltip on hover
-      mark.addEventListener('mouseenter', () => {
-        showFloatingTooltip(mark, match.replacement);
-      });
-      mark.addEventListener('mouseleave', () => {
-        hideFloatingTooltip();
-      });
-
-      // Quick replacement on click
-      mark.addEventListener('click', (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        hideFloatingTooltip();
-        handleWordReplacement(element, match.start, match.end, match.replacement);
-      });
-
-      fragment.appendChild(mark);
-      currentIndex = match.end;
+      currentIndex = marker.end;
     }
 
-    // Append any trailing text
     if (currentIndex < text.length) {
       fragment.appendChild(document.createTextNode(text.substring(currentIndex)));
     }

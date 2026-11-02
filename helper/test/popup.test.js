@@ -9,6 +9,7 @@ console.log('--- TESTING POPUP LOGIC & HTML INTEGRITY ---');
 const popupHtml = fs.readFileSync(path.join(__dirname, '../popup/popup.html'), 'utf8');
 
 const requiredIds = [
+  'sync-status-indicator',
   'site-status-badge',
   'site-status-text',
   'current-site-host',
@@ -44,7 +45,7 @@ assert.strictEqual(AllowlistUtils.getSiteIdentifier('http://localhost:3000/app')
 assert.strictEqual(AllowlistUtils.getSiteIdentifier('file:///home/user/test.html'), 'local-files');
 
 // 3. Verify pattern normalization for user input
-assert.strictEqual(AllowlistUtils.normalizePattern('  https://My-Site.Com/path/to/page  '), 'my-site.com');
+assert.strictEqual(AllowlistUtils.normalizePattern('  https://My-Site.Com/path/to/page  '), 'https://my-site.com/path/to/page');
 assert.strictEqual(AllowlistUtils.normalizePattern('HTTP://LOCALHOST:8080/'), 'localhost:8080');
 assert.strictEqual(AllowlistUtils.normalizePattern('*.Google.com'), '*.google.com');
 

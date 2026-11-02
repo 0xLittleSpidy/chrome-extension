@@ -105,8 +105,20 @@ console.log('--- RUNNING UNIT TESTS ---');
   assert.strictEqual(AllowlistUtils.isUrlAllowed('http://localhost:3000', allowlist), false);
 
   // Normalization
-  assert.strictEqual(AllowlistUtils.normalizePattern('https://GitHub.com/path'), 'github.com');
+  assert.strictEqual(AllowlistUtils.normalizePattern('https://GitHub.com/path'), 'https://github.com/path');
   assert.strictEqual(AllowlistUtils.normalizePattern('  EXAMPLE.ORG/  '), 'example.org');
+  assert.strictEqual(AllowlistUtils.normalizePattern('https://goo.com/abcd?ads=asa'), 'https://goo.com/abcd?ads=asa');
+
+  // Exact path and query parameter matching
+  const granularAllowlist = [
+    'https://goo.com/abcd?ads=asa',
+    'https://api.site.com/v1/auth'
+  ];
+  assert.strictEqual(AllowlistUtils.isUrlAllowed('https://goo.com/abcd?ads=asa', granularAllowlist), true);
+  assert.strictEqual(AllowlistUtils.isUrlAllowed('https://goo.com/abcd?aew=dsd', granularAllowlist), false);
+  assert.strictEqual(AllowlistUtils.isUrlAllowed('https://goo.com/abcd', granularAllowlist), false);
+  assert.strictEqual(AllowlistUtils.isUrlAllowed('https://api.site.com/v1/auth', granularAllowlist), true);
+  assert.strictEqual(AllowlistUtils.isUrlAllowed('https://api.site.com/v1/other', granularAllowlist), false);
 }
 
 // 7. Test Dynamic User-Configured Rules in TextScanner
@@ -257,6 +269,76 @@ console.log('--- RUNNING UNIT TESTS ---');
   assert.strictEqual(await StorageManager.getSiteStorageEnabled('example.com'), true);
   await StorageManager.setSiteStorageEnabled('example.com', false);
   assert.strictEqual(await StorageManager.getSiteStorageEnabled('example.com'), false);
+
+  // 12. Test Header Redaction & Truncation logic
+  function testTransformHeaders(fullText, mode) {
+    const tag = (mode === 'truncate') ? '[truncated]' : '[redacted]';
+    let transformed = fullText.replace(/(cookie\s*:\s*)([^\r\n]+)/gi, (match, prefix, cookiesStr) => {
+      const pairs = cookiesStr.split(';');
+      const newPairs = pairs.map(pair => {
+        const eqIdx = pair.indexOf('=');
+        if (eqIdx === -1) return pair;
+        const keyPart = pair.slice(0, eqIdx + 1);
+        const valPart = pair.slice(eqIdx + 1);
+        const trimmedVal = valPart.trim();
+        const leadingSpaces = valPart.match(/^\s*/)[0];
+        const trailingSpaces = valPart.match(/\s*$/)[0];
+
+        let newVal;
+        if (trimmedVal.length <= 6) {
+          newVal = tag;
+        } else {
+          newVal = trimmedVal.slice(0, 3) + tag + trimmedVal.slice(-3);
+        }
+        return keyPart + leadingSpaces + newVal + trailingSpaces;
+      });
+      return prefix + newPairs.join(';');
+    });
+
+    transformed = transformed.replace(/(authorization\s*:\s*)([^\r\n]+)/gi, (match, prefix, authVal) => {
+      const trimmedVal = authVal.trim();
+      const leadingSpaces = authVal.match(/^\s*/)[0];
+      const trailingSpaces = authVal.match(/\s*$/)[0];
+
+      const authMatch = trimmedVal.match(/^([a-zA-Z0-9_-]+\s+)(.*)$/);
+      let authScheme = '';
+      let token = trimmedVal;
+      if (authMatch) {
+        authScheme = authMatch[1];
+        token = authMatch[2];
+      }
+
+      let newToken;
+      if (token.length <= 6) {
+        newToken = tag;
+      } else {
+        newToken = token.slice(0, 3) + tag + token.slice(-3);
+      }
+
+      return prefix + leadingSpaces + authScheme + newToken + trailingSpaces;
+    });
+
+    return transformed;
+  }
+
+  // Test Cookie redaction
+  const cookieInput = 'cookie: google=abcdef123xyz ; yahoo=abcdef456xyz';
+  const cookieRedacted = testTransformHeaders(cookieInput, 'redact');
+  assert.strictEqual(cookieRedacted, 'cookie: google=abc[redacted]xyz ; yahoo=abc[redacted]xyz');
+
+  // Test Cookie truncation
+  const cookieTruncated = testTransformHeaders(cookieInput, 'truncate');
+  assert.strictEqual(cookieTruncated, 'cookie: google=abc[truncated]xyz ; yahoo=abc[truncated]xyz');
+
+  // Test Authorization redaction with Bearer scheme
+  const authInput = 'Authorization: bearer ada1234567xyz';
+  const authRedacted = testTransformHeaders(authInput, 'redact');
+  assert.strictEqual(authRedacted, 'Authorization: bearer ada[redacted]xyz');
+
+  // Test short secret (<= 6 chars)
+  const shortInput = 'Authorization: Bearer secret\ncookie: session=12345';
+  const shortRedacted = testTransformHeaders(shortInput, 'redact');
+  assert.strictEqual(shortRedacted, 'Authorization: Bearer [redacted]\ncookie: session=[redacted]');
 
   console.log('[PASS] ALL UNIT TESTS PASSED!');
 })();

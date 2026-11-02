@@ -16,11 +16,30 @@ document.addEventListener('DOMContentLoaded', async () => {
   const popupSnippetsCount = document.getElementById('popup-snippets-count');
   const popupSnippetsList = document.getElementById('popup-snippets-list');
   const popupSnippetsEmpty = document.getElementById('popup-snippets-empty');
+  const syncStatusIndicator = document.getElementById('sync-status-indicator');
 
   let currentTabUrl = '';
   let currentSiteId = '';
   let currentAllowlist = [];
   let isScriptable = false;
+
+  function triggerSyncPulse() {
+    if (syncStatusIndicator) {
+      syncStatusIndicator.classList.remove('syncing');
+      void syncStatusIndicator.offsetWidth;
+      syncStatusIndicator.classList.add('syncing');
+      setTimeout(() => {
+        syncStatusIndicator.classList.remove('syncing');
+      }, 900);
+    }
+  }
+
+  if (syncStatusIndicator) {
+    syncStatusIndicator.addEventListener('click', () => {
+      triggerSyncPulse();
+      showFeedback('Sync is active', 'success');
+    });
+  }
 
   // 1. Get current tab information
   try {
@@ -165,14 +184,16 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     const isCurrentAllowed = currentTabUrl && AllowlistUtils.isUrlAllowed(currentTabUrl, currentAllowlist);
+    const matchedPattern = isCurrentAllowed ? AllowlistUtils.getMatchingPattern(currentTabUrl, currentAllowlist) : null;
+    const siteKey = matchedPattern || currentSiteId;
 
     if (isCurrentAllowed) {
       toggleCurrentSiteBtn.disabled = false;
       toggleCurrentSiteBtn.className = 'btn btn-danger';
       toggleCurrentSiteLabel.textContent = 'Remove from Whitelist';
 
-      const isReplacerOn = await StorageManager.getSiteReplacerEnabled(currentSiteId);
-      const isStorageOn = await StorageManager.getSiteStorageEnabled(currentSiteId);
+      const isReplacerOn = await StorageManager.getSiteReplacerEnabled(siteKey);
+      const isStorageOn = await StorageManager.getSiteStorageEnabled(siteKey);
 
       // Multi-switch status display
       if (isReplacerOn && isStorageOn) {
@@ -214,19 +235,22 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // 5. Toggle current site in whitelist
   toggleCurrentSiteBtn.addEventListener('click', async () => {
-    if (!currentSiteId || !isScriptable) return;
+    if (!currentTabUrl || !isScriptable) return;
 
     const isCurrentAllowed = AllowlistUtils.isUrlAllowed(currentTabUrl, currentAllowlist);
 
     if (isCurrentAllowed) {
       currentAllowlist = currentAllowlist.filter(p => !AllowlistUtils.matchUrlWithPattern(currentTabUrl, p));
       await StorageManager.setAllowlist(currentAllowlist);
-      showFeedback(`Removed ${currentSiteId}`, 'success');
+      triggerSyncPulse();
+      showFeedback(`Removed from whitelist`, 'success');
     } else {
-      if (!currentAllowlist.includes(currentSiteId)) {
-        currentAllowlist.push(currentSiteId);
+      const entryToAdd = AllowlistUtils.normalizePattern(currentTabUrl) || currentSiteId;
+      if (!currentAllowlist.includes(entryToAdd)) {
+        currentAllowlist.push(entryToAdd);
         await StorageManager.setAllowlist(currentAllowlist);
-        showFeedback(`Added ${currentSiteId} to whitelist`, 'success');
+        triggerSyncPulse();
+        showFeedback(`Added to whitelist`, 'success');
       }
     }
     await render();
@@ -235,9 +259,12 @@ document.addEventListener('DOMContentLoaded', async () => {
   // 6. Active site replacer switch change handler
   if (toggleSiteReplacer) {
     toggleSiteReplacer.addEventListener('change', async () => {
-      if (!currentSiteId) return;
+      const matchedPattern = currentTabUrl ? AllowlistUtils.getMatchingPattern(currentTabUrl, currentAllowlist) : null;
+      const siteKey = matchedPattern || currentSiteId;
+      if (!siteKey) return;
       const isChecked = toggleSiteReplacer.checked;
-      await StorageManager.setSiteReplacerEnabled(currentSiteId, isChecked);
+      await StorageManager.setSiteReplacerEnabled(siteKey, isChecked);
+      triggerSyncPulse();
       showFeedback(isChecked ? 'Replacer enabled on this site' : 'Replacer paused on this site');
       await render();
     });
@@ -246,9 +273,12 @@ document.addEventListener('DOMContentLoaded', async () => {
   // 7. Active site storage switch change handler
   if (toggleSiteStorage) {
     toggleSiteStorage.addEventListener('change', async () => {
-      if (!currentSiteId) return;
+      const matchedPattern = currentTabUrl ? AllowlistUtils.getMatchingPattern(currentTabUrl, currentAllowlist) : null;
+      const siteKey = matchedPattern || currentSiteId;
+      if (!siteKey) return;
       const isChecked = toggleSiteStorage.checked;
-      await StorageManager.setSiteStorageEnabled(currentSiteId, isChecked);
+      await StorageManager.setSiteStorageEnabled(siteKey, isChecked);
+      triggerSyncPulse();
       showFeedback(isChecked ? 'Storage enabled on this site' : 'Storage paused on this site');
       await render();
     });
@@ -257,6 +287,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   // 8. Listen for storage changes from background or settings
   chrome.storage.onChanged.addListener(async (changes) => {
     if (changes.allowlist || changes.site_replacer_state || changes.site_storage_state || changes.snippets) {
+      triggerSyncPulse();
       currentAllowlist = await StorageManager.getAllowlist();
       await render();
     }

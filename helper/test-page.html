@@ -128,6 +128,12 @@
     </div>
   </div>
 
+  <div class="field-card">
+    <label for="textarea-headers">Sensitive Headers Test:</label>
+    <textarea id="textarea-headers">cookie: google=abcdef123xyz ; yahoo=secrettoken999
+Authorization: bearer mylongsecretkey789</textarea>
+  </div>
+
   <script>
     document.getElementById('add-dynamic-btn').addEventListener('click', () => {
       const container = document.getElementById('dynamic-container');

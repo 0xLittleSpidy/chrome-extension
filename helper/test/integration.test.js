@@ -359,6 +359,62 @@ async function runTest() {
   assert(dynamicReplacement.includes('They were active.'), 'Dynamic field "are" must be replaced with "were"');
   console.log('[PASS] Dynamically created text fields are automatically detected and supported.');
 
+  // 11b. Test Sensitive Header Floating Bar (Cookie & Authorization)
+  console.log('[Headers Test] Testing sensitive header detection and floating bar...');
+  const headerBarVisible = await evalInPage(`
+    (() => {
+      const el = document.getElementById('textarea-headers');
+      if (!el) return { found: false, error: 'textarea-headers not found' };
+      el.focus();
+      el.dispatchEvent(new Event('focusin', { bubbles: true }));
+      const host = document.getElementById('is-highlighter-extension-root');
+      if (!host || !host.shadowRoot) return { found: false, error: 'no-shadow-root' };
+      const bar = host.shadowRoot.querySelector('.helper-header-floating-bar');
+      return {
+        found: true,
+        barExists: !!bar,
+        display: bar ? bar.style.display : 'none',
+        buttons: bar ? Array.from(bar.querySelectorAll('.helper-bar-btn')).map(b => b.textContent) : []
+      };
+    })()
+  `);
+  assert.strictEqual(headerBarVisible.found, true);
+  assert.strictEqual(headerBarVisible.barExists, true);
+  assert.strictEqual(headerBarVisible.display, 'flex');
+  assert.deepStrictEqual(headerBarVisible.buttons, ['Truncate', 'Redact', 'Red Color Truncate', 'Red Color Redact']);
+  console.log('[PASS] Floating header bar appears on focus with all 4 required options.');
+
+  // Click "Red Color Redact" button on floating bar
+  console.log('[Headers Test] Clicking "Red Color Redact" on floating bar...');
+  const redactionResult = await evalInPage(`
+    (() => {
+      const host = document.getElementById('is-highlighter-extension-root');
+      const bar = host.shadowRoot.querySelector('.helper-header-floating-bar');
+      const redRedactBtn = Array.from(bar.querySelectorAll('.helper-bar-btn')).find(b => b.dataset.action === 'red-color-redact');
+      if (!redRedactBtn) return { success: false, error: 'btn-not-found' };
+      redRedactBtn.click();
+
+      const el = document.getElementById('textarea-headers');
+      const bTags = Array.from(host.shadowRoot.querySelectorAll('.helper-redacted-tag')).map(t => t.textContent);
+      const redSpans = Array.from(host.shadowRoot.querySelectorAll('.helper-redacted-endpoint-red')).map(s => s.textContent);
+
+      return {
+        success: true,
+        val: el.value,
+        bTags,
+        redSpans
+      };
+    })()
+  `);
+  assert.strictEqual(redactionResult.success, true);
+  assert(redactionResult.val.includes('google=abc[redacted]xyz'));
+  assert(redactionResult.val.includes('yahoo=sec[redacted]999'));
+  assert(redactionResult.val.includes('Authorization: bearer myl[redacted]789'));
+  assert(redactionResult.bTags.includes('[redacted]'), 'Tag [redacted] must be rendered bold in overlay');
+  assert(redactionResult.redSpans.includes('abc'), 'Endpoints must be rendered in red');
+  assert(redactionResult.redSpans.includes('xyz'), 'Endpoints must be rendered in red');
+  console.log('[PASS] Header redaction preserves first 3 and last 3 characters, bolds [redacted], and colors endpoints red.');
+
   // 12. Test Active Site Replacer Switch (pause replacer without removing from whitelist)
   console.log('[Per-Site Switch] Pausing replacer on 127.0.0.1:' + PORT + '...');
   await evalInSW(`

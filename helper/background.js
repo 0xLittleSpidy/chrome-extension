@@ -215,35 +215,28 @@ async function updateBadgeForTab(tabId, url) {
     const isAllowed = AllowlistUtils.isUrlAllowed(url, allowlist);
 
     if (isAllowed) {
-      const domain = AllowlistUtils.getSiteIdentifier(url);
-      const isReplacerOn = await StorageManager.getSiteReplacerEnabled(domain);
-      const isStorageOn = await StorageManager.getSiteStorageEnabled(domain);
+      const matchedPattern = AllowlistUtils.getMatchingPattern(url, allowlist);
+      const siteKey = matchedPattern || AllowlistUtils.getSiteIdentifier(url);
+      const isReplacerOn = await StorageManager.getSiteReplacerEnabled(siteKey);
+      const isStorageOn = await StorageManager.getSiteStorageEnabled(siteKey);
 
-      if (isReplacerOn && isStorageOn) {
+      if (isReplacerOn || isStorageOn) {
+        // At least one function is active on this site: badge must show ON
         await chrome.action.setBadgeText({ tabId, text: 'ON' });
         await chrome.action.setBadgeBackgroundColor({ tabId, color: BADGE_COLOR_ACTIVE });
+
+        let titleText = 'Helper: Active on this site';
+        if (!isReplacerOn && isStorageOn) {
+          titleText = 'Helper: Active (Replacer paused, Snippets enabled)';
+        } else if (isReplacerOn && !isStorageOn) {
+          titleText = 'Helper: Active (Storage paused, Replacer enabled)';
+        }
         await chrome.action.setTitle({
           tabId,
-          title: 'Helper: Active on this site'
-        });
-      } else if (!isReplacerOn && isStorageOn) {
-        // Replacer is paused on this site, but snippet storage / Helper is still active
-        await chrome.action.setBadgeText({ tabId, text: 'ON' });
-        await chrome.action.setBadgeBackgroundColor({ tabId, color: BADGE_COLOR_ACTIVE });
-        await chrome.action.setTitle({
-          tabId,
-          title: 'Helper: Active on this site (Replacer paused, Snippets enabled)'
-        });
-      } else if (isReplacerOn && !isStorageOn) {
-        // Storage is paused, but replacer is active
-        await chrome.action.setBadgeText({ tabId, text: 'ON' });
-        await chrome.action.setBadgeBackgroundColor({ tabId, color: BADGE_COLOR_ACTIVE });
-        await chrome.action.setTitle({
-          tabId,
-          title: 'Helper: Active on this site (Storage paused, Replacer enabled)'
+          title: titleText
         });
       } else {
-        // Both replacer and storage features are paused
+        // ONLY when all functions on the site are paused
         await chrome.action.setBadgeText({ tabId, text: 'PAUSE' });
         await chrome.action.setBadgeBackgroundColor({ tabId, color: BADGE_COLOR_PAUSED });
         await chrome.action.setTitle({

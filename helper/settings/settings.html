@@ -12,8 +12,16 @@
     <aside class="sidebar">
       <div class="brand-area">
         <div class="brand-badge">H</div>
-        <div>
-          <h1 class="brand-title">Helper</h1>
+        <div class="brand-info-wrap">
+          <div class="brand-title-row">
+            <h1 class="brand-title">Helper</h1>
+            <div id="settings-sync-indicator" class="settings-sync-badge" title="Auto-sync active">
+              <svg class="sync-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>
+              </svg>
+              <span>Synced</span>
+            </div>
+          </div>
           <p class="brand-subtitle">Configuration Center</p>
         </div>
       </div>
@@ -67,18 +75,18 @@
         <header class="section-header">
           <div>
             <h2 class="section-title">Whitelist Management</h2>
-            <p class="section-desc">Manage the websites where Helper text scanning and replacement is allowed to run.</p>
+            <p class="section-desc">Manage the websites and specific URLs (including exact paths and query parameters) where Helper text scanning and replacement is allowed to run.</p>
           </div>
         </header>
 
         <div class="card">
-          <h3 class="card-title">Add Website</h3>
+          <h3 class="card-title">Add Website or Exact URL</h3>
           <form id="add-whitelist-form" class="form-row">
             <input 
               type="text" 
               id="whitelist-input" 
               class="form-input" 
-              placeholder="e.g. example.com or *.domain.org" 
+              placeholder="e.g. example.com, *.domain.org, or https://goo.com/abcd?ads=asa" 
               autocomplete="off" 
               spellcheck="false" 
               required
