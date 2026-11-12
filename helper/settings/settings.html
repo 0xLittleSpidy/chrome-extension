@@ -30,25 +30,41 @@
         <button class="nav-btn active" data-tab="tab-whitelist" id="nav-whitelist">
           <span class="nav-label">Whitelist</span>
         </button>
+        <button class="nav-btn" data-tab="tab-blacklist" id="nav-blacklist">
+          <span class="nav-label">Blacklist</span>
+        </button>
         <button class="nav-btn" data-tab="tab-snippets" id="nav-snippets">
           <span class="nav-label">Saved Snippets</span>
         </button>
         <button class="nav-btn" data-tab="tab-rules" id="nav-rules">
           <span class="nav-label">Replacer Rules</span>
         </button>
+        <button class="nav-btn" data-tab="tab-shortcuts" id="nav-shortcuts">
+          <span class="nav-label">Shortcuts</span>
+        </button>
+        <button class="nav-btn" data-tab="tab-header-cleaner" id="nav-header-cleaner">
+          <span class="nav-label">Header Cleaner</span>
+        </button>
         <button class="nav-btn" data-tab="tab-import-export" id="nav-import-export">
           <span class="nav-label">Import & Export</span>
         </button>
+        <a href="../sync/sync.html" class="nav-btn" id="nav-file-sync" style="text-decoration: none;">
+          <span class="nav-label">File Sync Page</span>
+        </a>
       </nav>
 
       <div class="sidebar-footer">
+        <input type="file" id="sidebar-import-input" accept=".json,application/json" style="display: none;">
+        <button id="sidebar-import-btn" class="btn-file-setup" type="button" style="margin-bottom: 6px;">
+          <span>Import</span>
+        </button>
+        <button id="sidebar-export-btn" class="btn-file-setup" type="button" style="margin-bottom: 8px;">
+          <span>Export</span>
+        </button>
         <button id="theme-toggle-btn" class="btn-theme-toggle" type="button" aria-label="Toggle theme">
           <span id="theme-toggle-label">Theme: Dark</span>
         </button>
-        <button id="sidebar-file-btn" class="btn-file-setup" type="button">
-          <span>Data File Setup</span>
-        </button>
-        <p class="version-tag">Helper v2.0.0</p>
+        <p class="version-tag">Helper v2.1.0</p>
       </div>
     </aside>
 
@@ -112,12 +128,54 @@
         </div>
       </section>
 
+      <!-- Tab: Blacklist -->
+      <section id="tab-blacklist" class="tab-panel">
+        <header class="section-header">
+          <div>
+            <h2 class="section-title">Blacklist Management</h2>
+            <p class="section-desc">Manage blocked websites, paths, or URLs (e.g. /admin/*, example.com/checkout). Blacklisted paths completely disable Helper even if the parent domain is whitelisted.</p>
+          </div>
+        </header>
+
+        <div class="card">
+          <h3 class="card-title">Add Path or URL to Blacklist</h3>
+          <form id="add-blacklist-form" class="form-row">
+            <input 
+              type="text" 
+              id="blacklist-input" 
+              class="form-input" 
+              placeholder="e.g. /admin/*, example.com/secret, or *.internal.org" 
+              autocomplete="off" 
+              spellcheck="false" 
+              required
+            />
+            <button type="submit" class="btn btn-primary">Add to Blacklist</button>
+          </form>
+        </div>
+
+        <div class="card">
+          <div class="card-header-flex">
+            <h3 class="card-title">Blacklisted URLs & Paths</h3>
+            <span id="blacklist-count" class="badge">0 items</span>
+          </div>
+
+          <div id="blacklist-list" class="items-list">
+            <!-- Dynamically populated -->
+          </div>
+
+          <div id="blacklist-empty" class="empty-state">
+            <p class="empty-title">No URLs in blacklist</p>
+            <p class="empty-desc">Add paths or URLs above to block Helper on sensitive routes.</p>
+          </div>
+        </div>
+      </section>
+
       <!-- Tab 2: Saved Snippets -->
       <section id="tab-snippets" class="tab-panel">
         <header class="section-header">
           <div>
             <h2 class="section-title">Frequently Used Snippets</h2>
-            <p class="section-desc">Store common text snippets. Right-click on any page to view them and copy with one click.</p>
+            <p class="section-desc">Store common text snippets. Right-click on any page to view them and paste with one click.</p>
           </div>
         </header>
 
@@ -126,15 +184,25 @@
           <form id="snippet-form" class="form-col">
             <input type="hidden" id="snippet-id" value="">
             
-            <div class="form-group">
-              <label for="snippet-heading" class="form-label">Heading (Title in Context Menu)</label>
-              <input 
-                type="text" 
-                id="snippet-heading" 
-                class="form-input" 
-                placeholder="e.g. Work Email, Support Reply, Signature" 
-                required 
-              />
+            <div class="form-row-2col">
+              <div class="form-group">
+                <label for="snippet-heading" class="form-label">Heading (Title in Context Menu)</label>
+                <input 
+                  type="text" 
+                  id="snippet-heading" 
+                  class="form-input" 
+                  placeholder="e.g. Work Email, Support Reply, Signature" 
+                  required 
+                />
+              </div>
+
+              <div class="form-group">
+                <label for="snippet-category" class="form-label">Category</label>
+                <div style="display: flex; gap: 8px;">
+                  <select id="snippet-category" class="form-input" style="flex: 1;"></select>
+                  <button type="button" id="snippet-add-category-btn" class="btn btn-secondary btn-sm">+ New Category</button>
+                </div>
+              </div>
             </div>
 
             <!-- Multi-Answer Management Section -->
@@ -191,7 +259,10 @@
         <div class="card">
           <div class="card-header-flex">
             <h3 class="card-title">Saved Snippets</h3>
-            <span id="snippets-count" class="badge">0 snippets</span>
+            <div style="display: flex; gap: 8px; align-items: center;">
+              <select id="settings-category-filter" class="form-input" style="width: auto; padding: 4px 8px; font-size: 13px;"></select>
+              <span id="snippets-count" class="badge">0 snippets</span>
+            </div>
           </div>
 
           <div id="snippets-list" class="snippets-grid">
@@ -278,7 +349,89 @@
         </div>
       </section>
 
-      <!-- Tab 4: Import & Export -->
+      <!-- Tab 4: Shortcuts -->
+      <section id="tab-shortcuts" class="tab-panel">
+        <header class="section-header">
+          <div>
+            <h2 class="section-title">Flying Shortcuts</h2>
+            <p class="section-desc">Create shortcut buttons that appear as a floating toolbar inside textboxes. Clicking a button runs that action or keystroke for you.</p>
+          </div>
+        </header>
+
+        <div class="card">
+          <h3 id="shortcut-form-title" class="card-title">Add New Shortcut</h3>
+          <form id="shortcut-form" class="form-col">
+            <input type="hidden" id="shortcut-id" value="">
+            <div class="form-row-2col">
+              <div class="form-group">
+                <label for="shortcut-name" class="form-label">Shortcut Name (Display on button)</label>
+                <input type="text" id="shortcut-name" class="form-input" placeholder="e.g. Copy, Paste, Select All" required />
+              </div>
+              <div class="form-group">
+                <label for="shortcut-keys" class="form-label">Key Combination</label>
+                <input type="text" id="shortcut-keys" class="form-input" placeholder="e.g. Ctrl+C, Ctrl+V, Ctrl+A, Ctrl+Z" required />
+              </div>
+            </div>
+            <div class="form-actions">
+              <button type="submit" id="shortcut-submit-btn" class="btn btn-primary">Save Shortcut</button>
+              <button type="button" id="shortcut-cancel-btn" class="btn btn-secondary" style="display: none;">Cancel</button>
+            </div>
+          </form>
+        </div>
+
+        <div class="card">
+          <div class="card-header-flex">
+            <h3 class="card-title">Active Shortcuts</h3>
+            <span id="shortcuts-count" class="badge">0 shortcuts</span>
+          </div>
+          <div id="shortcuts-list" class="rules-table-container">
+            <!-- Dynamically populated -->
+          </div>
+          <div id="shortcuts-empty" class="empty-state">
+            <p class="empty-title">No shortcuts configured</p>
+            <p class="empty-desc">Create your first shortcut above. It will appear as a flying button inside textboxes on whitelisted pages.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- Tab 5: Header Cleaner -->
+      <section id="tab-header-cleaner" class="tab-panel">
+        <header class="section-header">
+          <div>
+            <h2 class="section-title">Remove Unwanted Headers</h2>
+            <p class="section-desc">Configure header patterns to remove from textboxes. In text fields, clicking the floating 'Remove Unwanted Headers' button strips all lines starting with these headers. Wildcards like * match any headers with that prefix (e.g. sec-fetch-* matches sec-fetch-dest, sec-fetch-mode, etc.).</p>
+          </div>
+        </header>
+
+        <div class="card">
+          <h3 class="card-title">Add Header Pattern</h3>
+          <form id="header-cleaner-form" class="form-row">
+            <input 
+              type="text" 
+              id="header-pattern-input" 
+              class="form-input" 
+              placeholder="e.g. sec-fetch-*, X-Custom-Header, or Authorization" 
+              autocomplete="off" 
+              spellcheck="false" 
+              required
+            />
+            <button type="submit" class="btn btn-primary">Add Pattern</button>
+            <button type="button" id="reset-headers-btn" class="btn btn-secondary">Reset to Defaults</button>
+          </form>
+        </div>
+
+        <div class="card">
+          <div class="card-header-flex">
+            <h3 class="card-title">Unwanted Header Patterns</h3>
+            <span id="header-cleaner-count" class="badge">0 patterns</span>
+          </div>
+          <div id="header-cleaner-list" class="rules-table-container">
+            <!-- Dynamically populated -->
+          </div>
+        </div>
+      </section>
+
+      <!-- Tab 6: Import & Export -->
       <section id="tab-import-export" class="tab-panel">
         <header class="section-header">
           <div>

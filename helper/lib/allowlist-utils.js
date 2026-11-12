@@ -105,6 +105,27 @@
     const questionIdx = patternWithoutScheme.indexOf('?');
     const hasPathOrParam = questionIdx !== -1 || (slashIdx !== -1 && slashIdx < patternWithoutScheme.length - 1);
 
+    // Bare path without host e.g. /admin/* or /checkout
+    if (pattern.startsWith('/')) {
+      try {
+        const u = new URL(urlString);
+        const urlPath = u.pathname.toLowerCase();
+        const normPattern = pattern.toLowerCase();
+        if (normPattern.endsWith('/*')) {
+          const prefix = normPattern.slice(0, -1);
+          return urlPath.startsWith(prefix) || urlPath === normPattern.slice(0, -2);
+        } else if (normPattern.includes('*')) {
+          const escaped = normPattern.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*');
+          return new RegExp('^' + escaped + '$', 'i').test(urlPath);
+        }
+        const normUrlPath = (urlPath.length > 1 && urlPath.endsWith('/')) ? urlPath.slice(0, -1) : urlPath;
+        const normPat = (normPattern.length > 1 && normPattern.endsWith('/')) ? normPattern.slice(0, -1) : normPattern;
+        return normUrlPath === normPat;
+      } catch (e) {
+        return false;
+      }
+    }
+
     if (hasPathOrParam) {
       try {
         const patternObj = new URL(hasProtocol ? pattern : `${urlObj.protocol}//${pattern}`);
@@ -117,6 +138,18 @@
         // Compare host
         if (patternObj.host.toLowerCase() !== hostWithPort && patternObj.hostname.toLowerCase() !== hostname) {
           return false;
+        }
+
+        // Wildcard path matching e.g. /admin/*
+        if (patternObj.pathname.includes('*')) {
+          const patPath = patternObj.pathname.toLowerCase();
+          const urlPath = urlObj.pathname.toLowerCase();
+          if (patPath.endsWith('/*')) {
+            const prefix = patPath.slice(0, -1);
+            return urlPath.startsWith(prefix) || urlPath === patPath.slice(0, -2);
+          }
+          const escaped = patPath.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*');
+          return new RegExp('^' + escaped + '$', 'i').test(urlPath);
         }
 
         // Compare pathname (normalize trailing slash)
@@ -222,6 +255,44 @@
   }
 
   /**
+   * Checks if a URL is blocked by any rule in the blacklist.
+   * @param {string} urlString 
+   * @param {Array<string>} blacklist 
+   * @returns {boolean}
+   */
+  function isUrlBlacklisted(urlString, blacklist) {
+    if (!urlString || !Array.isArray(blacklist) || blacklist.length === 0) {
+      return false;
+    }
+
+    for (let i = 0; i < blacklist.length; i++) {
+      if (matchUrlWithPattern(urlString, blacklist[i])) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /**
+   * Retrieves the specific pattern in the blacklist that matches the URL, if any.
+   * @param {string} urlString 
+   * @param {Array<string>} blacklist 
+   * @returns {string|null}
+   */
+  function getMatchingBlacklistPattern(urlString, blacklist) {
+    if (!urlString || !Array.isArray(blacklist) || blacklist.length === 0) {
+      return null;
+    }
+
+    for (let i = 0; i < blacklist.length; i++) {
+      if (matchUrlWithPattern(urlString, blacklist[i])) {
+        return blacklist[i];
+      }
+    }
+    return null;
+  }
+
+  /**
    * Extracts a user-friendly site identifier from a URL.
    * @param {string} urlString 
    * @returns {string} e.g. "example.com" or "localhost:3000" or "local-files"
@@ -241,7 +312,9 @@
     normalizePattern: normalizePattern,
     matchUrlWithPattern: matchUrlWithPattern,
     isUrlAllowed: isUrlAllowed,
+    isUrlBlacklisted: isUrlBlacklisted,
     getMatchingPattern: getMatchingPattern,
+    getMatchingBlacklistPattern: getMatchingBlacklistPattern,
     getSiteIdentifier: getSiteIdentifier
   };
 });

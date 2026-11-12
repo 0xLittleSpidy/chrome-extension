@@ -527,6 +527,154 @@ async function runTest() {
   assert(scaleCount >= 30, 'StorageManager must store 30+ snippets without quota failure in live Chrome');
   console.log('[PASS] Successfully saved and retrieved ' + scaleCount + ' snippets in live Chrome.');
 
+  // 14c. Test Direct Paste Snippet via Action Message
+  console.log('[Paste Snippet] Testing direct snippet paste into active text field...');
+  await evalInPage(`
+    (() => {
+      const ta = document.getElementById('textarea-standard');
+      ta.focus();
+      ta.dispatchEvent(new Event('focus', { bubbles: true }));
+      ta.value = 'Initial ';
+      ta.selectionStart = ta.value.length;
+      ta.selectionEnd = ta.value.length;
+    })()
+  `);
+  await evalInSW(`
+    (async () => {
+      const [tab] = await chrome.tabs.query({ url: 'http://127.0.0.1:${PORT}/*' });
+      if (tab) {
+        await chrome.tabs.sendMessage(tab.id, { type: 'PASTE_SNIPPET', text: 'Hello Direct Paste!' });
+      }
+    })()
+  `);
+  await new Promise(r => setTimeout(r, 400));
+  const pastedVal = await evalInPage(`document.getElementById('textarea-standard').value`);
+  assert(pastedVal.includes('Hello Direct Paste!'), 'Textarea must contain directly pasted snippet text');
+  console.log('[PASS] Snippet paste action successfully inserts text into focused field.');
+
+  // 14d. Test Flying Toolbar & Unwanted Headers Cleaner
+  console.log('[Flying Toolbar] Testing flying toolbar and unwanted header cleaner...');
+  await evalInSW(`
+    (async () => {
+      await StorageManager.saveShortcut({ id: 'sc-test-1', name: 'PasteHelper', keys: 'Ctrl+V' });
+    })()
+  `);
+  await new Promise(r => setTimeout(r, 300));
+
+  const headerCleanResult = await evalInPage(`
+    (async () => {
+      const ta = document.getElementById('textarea-standard');
+      ta.value = 'Host: api.example.com\\nsec-fetch-mode: cors\\nsec-ch-ua: "Chromium";v="124"\\nAccept: text/plain\\nPriority: u=1';
+      ta.focus();
+      ta.dispatchEvent(new Event('input', { bubbles: true }));
+
+      await new Promise(r => setTimeout(r, 200));
+      const host = document.getElementById('is-highlighter-extension-root');
+      if (!host || !host.shadowRoot) return { error: 'No shadow root' };
+
+      const toolbar = host.shadowRoot.querySelector('.helper-flying-toolbar');
+      if (!toolbar) return { error: 'No flying toolbar' };
+
+      const removeBtn = toolbar.querySelector('.helper-flying-header-btn');
+      if (!removeBtn) return { error: 'No remove unwanted headers button' };
+
+      const shortcutBtn = toolbar.querySelector('.helper-flying-shortcut-btn');
+      const hasShortcut = shortcutBtn && shortcutBtn.textContent === 'PasteHelper';
+
+      removeBtn.click();
+      await new Promise(r => setTimeout(r, 200));
+
+      return {
+        cleanedValue: ta.value,
+        toolbarVisible: toolbar.style.display !== 'none',
+        hasShortcut
+      };
+    })()
+  `);
+  assert.strictEqual(headerCleanResult.toolbarVisible, true, 'Flying toolbar must be visible on focused textbox');
+  assert.strictEqual(headerCleanResult.hasShortcut, true, 'Flying toolbar must include configured shortcuts');
+  assert(!headerCleanResult.cleanedValue.includes('sec-fetch-mode'), 'sec-fetch-mode header must be stripped');
+  assert(!headerCleanResult.cleanedValue.includes('sec-ch-ua'), 'sec-ch-ua header must be stripped');
+  assert(!headerCleanResult.cleanedValue.includes('Priority:'), 'Priority header must be stripped');
+  assert(headerCleanResult.cleanedValue.includes('Host: api.example.com'), 'Host header must be preserved');
+  assert(headerCleanResult.cleanedValue.includes('Accept: text/plain'), 'Accept header must be preserved');
+  console.log('[PASS] Flying toolbar displays shortcuts and strips unwanted headers accurately.');
+
+  // 14e. Test Universal Selection Transformation Bar
+  console.log('[Selection Bar] Testing universal text selection transformation bar...');
+  const selTransformResult = await evalInPage(`
+    (async () => {
+      const ta = document.getElementById('textarea-standard');
+      ta.value = 'MySecretToken1234567890SecretTail';
+      ta.focus();
+      ta.dispatchEvent(new Event('focus', { bubbles: true }));
+      ta.setSelectionRange(0, ta.value.length);
+      ta.dispatchEvent(new Event('select', { bubbles: true }));
+      ta.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+
+      await new Promise(r => setTimeout(r, 200));
+      const host = document.getElementById('is-highlighter-extension-root');
+      if (!host || !host.shadowRoot) return { error: 'No shadow root' };
+
+      const bar = host.shadowRoot.querySelector('.helper-selection-floating-bar');
+      if (!bar) return { error: 'No selection bar' };
+
+      const buttons = Array.from(bar.querySelectorAll('.helper-bar-btn')).map(b => b.textContent);
+
+      const truncBtn = Array.from(bar.querySelectorAll('.helper-bar-btn')).find(b => b.textContent === 'Truncate');
+      if (!truncBtn) return { error: 'No Truncate button' };
+      truncBtn.click();
+      await new Promise(r => setTimeout(r, 200));
+
+      return {
+        buttons,
+        newValue: ta.value
+      };
+    })()
+  `);
+  if (selTransformResult.error) {
+    console.error('[Selection Bar Error]:', selTransformResult.error);
+  }
+  assert(selTransformResult.buttons.includes('Truncate'), 'Selection bar must have Truncate button');
+  assert(selTransformResult.buttons.includes('Redact'), 'Selection bar must have Redact button');
+  assert(selTransformResult.buttons.includes('Red Color Truncate'), 'Selection bar must have Red Color Truncate button');
+  assert(selTransformResult.buttons.includes('Red Color Redact'), 'Selection bar must have Red Color Redact button');
+  assert.strictEqual(selTransformResult.newValue, 'MyS[truncated]ail', 'Selected text must be truncated preserving 3-char prefix and suffix');
+  console.log('[PASS] Universal text selection transformation bar transforms selected text accurately.');
+
+  // 14f. Test Blacklist Override
+  console.log('[Blacklist] Testing blacklist override on allowlisted site...');
+  await evalInSW(`
+    (async () => {
+      await StorageManager.addToBlacklist('127.0.0.1:${PORT}/*');
+    })()
+  `);
+  await new Promise(r => setTimeout(r, 500));
+
+  const hostWhenBlacklisted = await evalInPage(`!!document.getElementById('is-highlighter-extension-root')`);
+  assert.strictEqual(hostWhenBlacklisted, false, 'Host root must be removed when URL is blacklisted');
+
+  const badgeWhenBlacklisted = await evalInSW(`
+    (async () => {
+      const [tab] = await chrome.tabs.query({ url: 'http://127.0.0.1:${PORT}/*' });
+      if (!tab) return 'no-tab';
+      return await chrome.action.getBadgeText({ tabId: tab.id });
+    })()
+  `);
+  assert.strictEqual(badgeWhenBlacklisted, '', 'Badge must be empty/off when page is blacklisted');
+  console.log('[PASS] Blacklist pattern overrides allowlist and deactivates extension on blacklisted path.');
+
+  // Restore by removing from blacklist
+  await evalInSW(`
+    (async () => {
+      await StorageManager.removeFromBlacklist('127.0.0.1:${PORT}/*');
+    })()
+  `);
+  await new Promise(r => setTimeout(r, 500));
+  const hostRestored = await evalInPage(`!!document.getElementById('is-highlighter-extension-root')`);
+  assert.strictEqual(hostRestored, true, 'Extension must reactivate when removed from blacklist');
+  console.log('[PASS] Extension reactivates when blacklist pattern is removed.');
+
   // 15. Test both switches disabled (multi-switch status)
   console.log('[Multi-Switch] Disabling both replacer and storage on site...');
   await evalInSW(`

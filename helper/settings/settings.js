@@ -13,12 +13,16 @@ document.addEventListener('DOMContentLoaded', async () => {
   const themeToggleBtn = document.getElementById('theme-toggle-btn');
   const themeToggleLabel = document.getElementById('theme-toggle-label');
 
+  // Sidebar Import/Export
+  const sidebarImportBtn = document.getElementById('sidebar-import-btn');
+  const sidebarExportBtn = document.getElementById('sidebar-export-btn');
+  const sidebarImportInput = document.getElementById('sidebar-import-input');
+
   // File setup elements
   const storageSetupBanner = document.getElementById('storage-setup-banner');
   const bannerStoreFileBtn = document.getElementById('banner-store-file-btn');
   const bannerSelectFileBtn = document.getElementById('banner-select-file-btn');
   const bannerDismissBtn = document.getElementById('banner-dismiss-btn');
-  const sidebarFileBtn = document.getElementById('sidebar-file-btn');
   const pickerSaveBtn = document.getElementById('picker-save-btn');
   const pickerOpenBtn = document.getElementById('picker-open-btn');
 
@@ -29,11 +33,21 @@ document.addEventListener('DOMContentLoaded', async () => {
   const whitelistCount = document.getElementById('whitelist-count');
   const whitelistEmpty = document.getElementById('whitelist-empty');
 
+  // Blacklist elements
+  const addBlacklistForm = document.getElementById('add-blacklist-form');
+  const blacklistInput = document.getElementById('blacklist-input');
+  const blacklistList = document.getElementById('blacklist-list');
+  const blacklistCount = document.getElementById('blacklist-count');
+  const blacklistEmpty = document.getElementById('blacklist-empty');
+
   // Snippet elements
   const snippetForm = document.getElementById('snippet-form');
   const snippetFormTitle = document.getElementById('snippet-form-title');
   const snippetIdInput = document.getElementById('snippet-id');
   const snippetHeadingInput = document.getElementById('snippet-heading');
+  const snippetCategorySelect = document.getElementById('snippet-category');
+  const snippetAddCategoryBtn = document.getElementById('snippet-add-category-btn');
+  const settingsCategoryFilter = document.getElementById('settings-category-filter');
   const snippetDescriptionInput = document.getElementById('snippet-description');
   const snippetDescriptionLabel = document.getElementById('snippet-description-label');
   const snippetMarkdownPreview = document.getElementById('snippet-markdown-preview');
@@ -45,6 +59,25 @@ document.addEventListener('DOMContentLoaded', async () => {
   const snippetsList = document.getElementById('snippets-list');
   const snippetsCount = document.getElementById('snippets-count');
   const snippetsEmpty = document.getElementById('snippets-empty');
+
+  // Shortcut elements
+  const shortcutForm = document.getElementById('shortcut-form');
+  const shortcutFormTitle = document.getElementById('shortcut-form-title');
+  const shortcutIdInput = document.getElementById('shortcut-id');
+  const shortcutNameInput = document.getElementById('shortcut-name');
+  const shortcutKeysInput = document.getElementById('shortcut-keys');
+  const shortcutSubmitBtn = document.getElementById('shortcut-submit-btn');
+  const shortcutCancelBtn = document.getElementById('shortcut-cancel-btn');
+  const shortcutsList = document.getElementById('shortcuts-list');
+  const shortcutsCount = document.getElementById('shortcuts-count');
+  const shortcutsEmpty = document.getElementById('shortcuts-empty');
+
+  // Header Cleaner elements
+  const headerCleanerForm = document.getElementById('header-cleaner-form');
+  const headerPatternInput = document.getElementById('header-pattern-input');
+  const headerCleanerList = document.getElementById('header-cleaner-list');
+  const headerCleanerCount = document.getElementById('header-cleaner-count');
+  const resetHeadersBtn = document.getElementById('reset-headers-btn');
 
   // Rule elements
   const ruleForm = document.getElementById('rule-form');
@@ -335,11 +368,55 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   }
 
-  if (sidebarFileBtn) {
-    sidebarFileBtn.addEventListener('click', () => {
-      switchTab('tab-import-export');
-      if (storageSetupBanner) {
-        storageSetupBanner.style.display = 'flex';
+  // Sidebar Import / Export Handlers
+  if (sidebarImportBtn && sidebarImportInput) {
+    sidebarImportBtn.addEventListener('click', () => {
+      sidebarImportInput.click();
+    });
+
+    sidebarImportInput.addEventListener('change', (e) => {
+      const file = e.target.files && e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = async (event) => {
+        try {
+          const text = event.target.result;
+          await StorageManager.importConfiguration(text, 'replace');
+          showToast('Configuration successfully imported!');
+          sidebarImportInput.value = '';
+          await Promise.all([
+            renderWhitelist(),
+            renderBlacklist(),
+            renderSnippets(),
+            renderRules(),
+            renderShortcuts(),
+            renderHeaderCleaner()
+          ]);
+        } catch (err) {
+          showToast('Import failed: ' + err.message, 'error');
+        }
+      };
+      reader.readAsText(file);
+    });
+  }
+
+  if (sidebarExportBtn) {
+    sidebarExportBtn.addEventListener('click', async () => {
+      try {
+        const config = await StorageManager.exportConfiguration();
+        const jsonStr = JSON.stringify(config, null, 2);
+        const blob = new Blob([jsonStr], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `helper-backup-${new Date().toISOString().slice(0, 10)}.json`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        showToast('Configuration exported successfully');
+      } catch (err) {
+        showToast('Export failed: ' + err.message, 'error');
       }
     });
   }
@@ -427,6 +504,66 @@ document.addEventListener('DOMContentLoaded', async () => {
     renderWhitelist();
   });
 
+  // --- Blacklist Management ---
+  async function renderBlacklist() {
+    if (!blacklistCount || !blacklistList) return;
+    const list = await StorageManager.getBlacklist();
+    blacklistCount.textContent = `${list.length} item${list.length === 1 ? '' : 's'}`;
+
+    blacklistList.innerHTML = '';
+    if (list.length === 0) {
+      if (blacklistEmpty) blacklistEmpty.style.display = 'block';
+    } else {
+      if (blacklistEmpty) blacklistEmpty.style.display = 'none';
+
+      list.forEach((entry) => {
+        const item = document.createElement('div');
+        item.className = 'list-item';
+
+        const title = document.createElement('span');
+        title.className = 'list-item-title';
+        title.textContent = entry;
+
+        const removeBtn = document.createElement('button');
+        removeBtn.className = 'btn btn-danger btn-sm';
+        removeBtn.textContent = 'Delete';
+        removeBtn.addEventListener('click', async () => {
+          await StorageManager.removeBlacklist(entry);
+          showToast(`Removed "${entry}" from blacklist`);
+          renderBlacklist();
+        });
+
+        item.appendChild(title);
+        item.appendChild(removeBtn);
+        blacklistList.appendChild(item);
+      });
+    }
+  }
+
+  if (addBlacklistForm && blacklistInput) {
+    addBlacklistForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const raw = blacklistInput.value.trim();
+      const normalized = AllowlistUtils.normalizePattern(raw) || raw;
+
+      if (!normalized) {
+        showToast('Please enter a valid path or URL', 'error');
+        return;
+      }
+
+      const current = await StorageManager.getBlacklist();
+      if (current.includes(normalized)) {
+        showToast('URL/Path is already in the blacklist', 'error');
+        return;
+      }
+
+      await StorageManager.addBlacklist(normalized);
+      blacklistInput.value = '';
+      showToast(`Added "${normalized}" to blacklist`);
+      renderBlacklist();
+    });
+  }
+
   // --- Multi-Answer & Markdown Snippet Management ---
   function updateLiveMarkdownPreview() {
     if (snippetMarkdownPreview && snippetDescriptionInput) {
@@ -512,8 +649,61 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   }
 
+  if (snippetAddCategoryBtn) {
+    snippetAddCategoryBtn.addEventListener('click', async () => {
+      const name = window.prompt('Enter new category name:');
+      if (name && name.trim()) {
+        await StorageManager.addCategory(name.trim());
+        showToast(`Category "${name.trim()}" created`);
+        await renderSnippets();
+        if (snippetCategorySelect) snippetCategorySelect.value = name.trim();
+      }
+    });
+  }
+
   async function renderSnippets() {
-    const list = await StorageManager.getSnippets();
+    const [allSnippets, categories] = await Promise.all([
+      StorageManager.getSnippets(),
+      StorageManager.getCategories()
+    ]);
+
+    // Populate category dropdown in form
+    if (snippetCategorySelect) {
+      const currentSelected = snippetCategorySelect.value;
+      snippetCategorySelect.innerHTML = '';
+      categories.forEach(cat => {
+        const opt = document.createElement('option');
+        opt.value = cat;
+        opt.textContent = cat;
+        if (cat === currentSelected) opt.selected = true;
+        snippetCategorySelect.appendChild(opt);
+      });
+      if (!snippetCategorySelect.value && categories[0]) {
+        snippetCategorySelect.value = categories[0];
+      }
+    }
+
+    // Populate category filter
+    if (settingsCategoryFilter) {
+      const currentFilter = settingsCategoryFilter.value || 'all';
+      settingsCategoryFilter.innerHTML = '<option value="all">All Categories</option>';
+      categories.forEach(cat => {
+        const opt = document.createElement('option');
+        opt.value = cat;
+        opt.textContent = cat;
+        if (cat === currentFilter) opt.selected = true;
+        settingsCategoryFilter.appendChild(opt);
+      });
+      settingsCategoryFilter.onchange = () => {
+        renderSnippets();
+      };
+    }
+
+    const activeFilter = settingsCategoryFilter ? settingsCategoryFilter.value : 'all';
+    const list = (activeFilter && activeFilter !== 'all')
+      ? allSnippets.filter(s => (s.category || 'General') === activeFilter)
+      : allSnippets;
+
     snippetsCount.textContent = `${list.length} snippet${list.length === 1 ? '' : 's'}`;
 
     snippetsList.innerHTML = '';
@@ -526,10 +716,72 @@ document.addEventListener('DOMContentLoaded', async () => {
         const card = document.createElement('div');
         card.className = 'snippet-card';
 
+        const headerRow = document.createElement('div');
+        headerRow.style.display = 'flex';
+        headerRow.style.justifyContent = 'space-between';
+        headerRow.style.alignItems = 'center';
+        headerRow.style.marginBottom = '8px';
+
+        const titleBox = document.createElement('div');
+        titleBox.style.display = 'flex';
+        titleBox.style.alignItems = 'center';
+        titleBox.style.gap = '8px';
+
         const heading = document.createElement('h4');
         heading.className = 'snippet-card-heading';
+        heading.style.margin = '0';
         heading.textContent = snippet.heading;
-        card.appendChild(heading);
+
+        const catBadge = document.createElement('span');
+        catBadge.className = 'badge';
+        catBadge.textContent = snippet.category || 'General';
+
+        titleBox.appendChild(heading);
+        titleBox.appendChild(catBadge);
+
+        // Reordering buttons
+        const reorderBox = document.createElement('div');
+        reorderBox.style.display = 'flex';
+        reorderBox.style.gap = '4px';
+
+        const upBtn = document.createElement('button');
+        upBtn.className = 'btn btn-secondary btn-sm';
+        upBtn.textContent = 'Up';
+        upBtn.title = 'Move snippet up';
+        upBtn.addEventListener('click', async () => {
+          const fullList = await StorageManager.getSnippets();
+          const idx = fullList.findIndex(s => s.id === snippet.id);
+          if (idx > 0) {
+            const temp = fullList[idx - 1];
+            fullList[idx - 1] = fullList[idx];
+            fullList[idx] = temp;
+            await StorageManager.reorderSnippets(fullList.map(s => s.id));
+            renderSnippets();
+          }
+        });
+
+        const downBtn = document.createElement('button');
+        downBtn.className = 'btn btn-secondary btn-sm';
+        downBtn.textContent = 'Down';
+        downBtn.title = 'Move snippet down';
+        downBtn.addEventListener('click', async () => {
+          const fullList = await StorageManager.getSnippets();
+          const idx = fullList.findIndex(s => s.id === snippet.id);
+          if (idx < fullList.length - 1) {
+            const temp = fullList[idx + 1];
+            fullList[idx + 1] = fullList[idx];
+            fullList[idx] = temp;
+            await StorageManager.reorderSnippets(fullList.map(s => s.id));
+            renderSnippets();
+          }
+        });
+
+        reorderBox.appendChild(upBtn);
+        reorderBox.appendChild(downBtn);
+
+        headerRow.appendChild(titleBox);
+        headerRow.appendChild(reorderBox);
+        card.appendChild(headerRow);
 
         const answers = Array.isArray(snippet.answers) && snippet.answers.length > 0
           ? snippet.answers
@@ -608,6 +860,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         editBtn.addEventListener('click', () => {
           snippetIdInput.value = snippet.id;
           snippetHeadingInput.value = snippet.heading;
+          if (snippetCategorySelect) {
+            snippetCategorySelect.value = snippet.category || 'General';
+          }
 
           currentFormAnswers = answers.length > 0 ? [...answers] : [''];
           currentAnswerIndex = 0;
@@ -648,6 +903,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   function resetSnippetForm() {
     snippetIdInput.value = '';
     snippetHeadingInput.value = '';
+    if (snippetCategorySelect) snippetCategorySelect.value = 'General';
     currentFormAnswers = [''];
     currentAnswerIndex = 0;
     if (snippetDescriptionInput) snippetDescriptionInput.value = '';
@@ -664,6 +920,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   snippetForm.addEventListener('submit', async (e) => {
     e.preventDefault();
     const heading = snippetHeadingInput.value.trim();
+    const category = snippetCategorySelect ? (snippetCategorySelect.value || 'General') : 'General';
     if (snippetDescriptionInput) {
       currentFormAnswers[currentAnswerIndex] = snippetDescriptionInput.value;
     }
@@ -689,6 +946,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       await StorageManager.saveSnippet({
         id: snippetIdInput.value || undefined,
         heading: heading,
+        category: category,
         description: cleanAnswers[0],
         answers: cleanAnswers
       });
@@ -840,6 +1098,202 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   });
 
+  // --- Shortcuts Management ---
+  async function renderShortcuts() {
+    if (!shortcutsCount || !shortcutsList) return;
+    const list = await StorageManager.getShortcuts();
+    shortcutsCount.textContent = `${list.length} shortcut${list.length === 1 ? '' : 's'}`;
+
+    shortcutsList.innerHTML = '';
+    if (list.length === 0) {
+      if (shortcutsEmpty) shortcutsEmpty.style.display = 'block';
+    } else {
+      if (shortcutsEmpty) shortcutsEmpty.style.display = 'none';
+
+      const table = document.createElement('table');
+      table.className = 'rules-table';
+      table.innerHTML = `
+        <thead>
+          <tr>
+            <th>Shortcut Name</th>
+            <th>Key Combination</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      `;
+      const tbody = table.querySelector('tbody');
+
+      list.forEach((sc) => {
+        const tr = document.createElement('tr');
+
+        const tdName = document.createElement('td');
+        tdName.style.fontWeight = '600';
+        tdName.textContent = sc.name;
+
+        const tdKeys = document.createElement('td');
+        const spanKey = document.createElement('span');
+        spanKey.className = 'rules-tag';
+        spanKey.textContent = sc.keys;
+        tdKeys.appendChild(spanKey);
+
+        const tdActions = document.createElement('td');
+        const actionsDiv = document.createElement('div');
+        actionsDiv.style.display = 'flex';
+        actionsDiv.style.gap = '8px';
+
+        const editBtn = document.createElement('button');
+        editBtn.className = 'btn btn-secondary btn-sm';
+        editBtn.textContent = 'Edit';
+        editBtn.addEventListener('click', () => {
+          shortcutIdInput.value = sc.id;
+          shortcutNameInput.value = sc.name;
+          shortcutKeysInput.value = sc.keys;
+          shortcutFormTitle.textContent = 'Edit Shortcut';
+          shortcutSubmitBtn.textContent = 'Update Shortcut';
+          shortcutCancelBtn.style.display = 'inline-flex';
+          shortcutNameInput.focus();
+        });
+
+        const deleteBtn = document.createElement('button');
+        deleteBtn.className = 'btn btn-danger btn-sm';
+        deleteBtn.textContent = 'Delete';
+        deleteBtn.addEventListener('click', async () => {
+          await StorageManager.deleteShortcut(sc.id);
+          showToast(`Deleted shortcut "${sc.name}"`);
+          if (shortcutIdInput.value === sc.id) {
+            resetShortcutForm();
+          }
+          renderShortcuts();
+        });
+
+        actionsDiv.appendChild(editBtn);
+        actionsDiv.appendChild(deleteBtn);
+        tdActions.appendChild(actionsDiv);
+
+        tr.appendChild(tdName);
+        tr.appendChild(tdKeys);
+        tr.appendChild(tdActions);
+        tbody.appendChild(tr);
+      });
+
+      shortcutsList.appendChild(table);
+    }
+  }
+
+  function resetShortcutForm() {
+    if (!shortcutForm) return;
+    shortcutIdInput.value = '';
+    shortcutNameInput.value = '';
+    shortcutKeysInput.value = '';
+    shortcutFormTitle.textContent = 'Add New Shortcut';
+    shortcutSubmitBtn.textContent = 'Save Shortcut';
+    shortcutCancelBtn.style.display = 'none';
+  }
+
+  if (shortcutCancelBtn) shortcutCancelBtn.addEventListener('click', resetShortcutForm);
+
+  if (shortcutForm) {
+    shortcutForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const name = shortcutNameInput.value.trim();
+      const keys = shortcutKeysInput.value.trim();
+
+      if (!name || !keys) {
+        showToast('Shortcut name and keys are required', 'error');
+        return;
+      }
+
+      try {
+        await StorageManager.saveShortcut({
+          id: shortcutIdInput.value || undefined,
+          name: name,
+          keys: keys
+        });
+        showToast(shortcutIdInput.value ? 'Shortcut updated' : 'Shortcut saved');
+        resetShortcutForm();
+        renderShortcuts();
+      } catch (err) {
+        showToast(err.message || 'Failed to save shortcut', 'error');
+      }
+    });
+  }
+
+  // --- Header Cleaner Management ---
+  async function renderHeaderCleaner() {
+    if (!headerCleanerCount || !headerCleanerList) return;
+    const list = await StorageManager.getUnwantedHeaders();
+    headerCleanerCount.textContent = `${list.length} pattern${list.length === 1 ? '' : 's'}`;
+
+    headerCleanerList.innerHTML = '';
+    const table = document.createElement('table');
+    table.className = 'rules-table';
+    table.innerHTML = `
+      <thead>
+        <tr>
+          <th>Header Pattern</th>
+          <th>Type</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    `;
+    const tbody = table.querySelector('tbody');
+
+    list.forEach((pattern) => {
+      const tr = document.createElement('tr');
+
+      const tdPat = document.createElement('td');
+      tdPat.style.fontWeight = '600';
+      tdPat.textContent = pattern;
+
+      const tdType = document.createElement('td');
+      const tag = document.createElement('span');
+      tag.className = 'rules-tag';
+      tag.textContent = pattern.includes('*') ? 'Wildcard Prefix' : 'Exact Header';
+      tdType.appendChild(tag);
+
+      const tdActions = document.createElement('td');
+      const deleteBtn = document.createElement('button');
+      deleteBtn.className = 'btn btn-danger btn-sm';
+      deleteBtn.textContent = 'Delete';
+      deleteBtn.addEventListener('click', async () => {
+        await StorageManager.deleteUnwantedHeader(pattern);
+        showToast(`Removed "${pattern}"`);
+        renderHeaderCleaner();
+      });
+
+      tdActions.appendChild(deleteBtn);
+      tr.appendChild(tdPat);
+      tr.appendChild(tdType);
+      tr.appendChild(tdActions);
+      tbody.appendChild(tr);
+    });
+
+    headerCleanerList.appendChild(table);
+  }
+
+  if (headerCleanerForm && headerPatternInput) {
+    headerCleanerForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const pattern = headerPatternInput.value.trim();
+      if (!pattern) return;
+
+      await StorageManager.addUnwantedHeader(pattern);
+      headerPatternInput.value = '';
+      showToast(`Added header pattern "${pattern}"`);
+      renderHeaderCleaner();
+    });
+  }
+
+  if (resetHeadersBtn) {
+    resetHeadersBtn.addEventListener('click', async () => {
+      await StorageManager.setUnwantedHeaders(StorageManager.DEFAULT_UNWANTED_HEADERS);
+      showToast('Reset unwanted headers to default list');
+      renderHeaderCleaner();
+    });
+  }
+
   // --- Import & Export Management ---
   exportJsonBtn.addEventListener('click', async () => {
     try {
@@ -902,7 +1356,14 @@ document.addEventListener('DOMContentLoaded', async () => {
       pendingImportData = null;
 
       // Refresh all tabs
-      await Promise.all([renderWhitelist(), renderSnippets(), renderRules()]);
+      await Promise.all([
+        renderWhitelist(),
+        renderBlacklist(),
+        renderSnippets(),
+        renderRules(),
+        renderShortcuts(),
+        renderHeaderCleaner()
+      ]);
     } catch (err) {
       showToast('Import failed: ' + err.message, 'error');
     }
@@ -911,8 +1372,11 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Listen for storage changes from other views
   chrome.storage.onChanged.addListener(() => {
     renderWhitelist();
+    renderBlacklist();
     renderSnippets();
     renderRules();
+    renderShortcuts();
+    renderHeaderCleaner();
   });
 
   // Initialize Theme, Setup Prompt, Answer Tabs, and Data
@@ -920,5 +1384,12 @@ document.addEventListener('DOMContentLoaded', async () => {
   await initFileSetupPrompt();
   renderAnswerTabs();
   updateLiveMarkdownPreview();
-  await Promise.all([renderWhitelist(), renderSnippets(), renderRules()]);
+  await Promise.all([
+    renderWhitelist(),
+    renderBlacklist(),
+    renderSnippets(),
+    renderRules(),
+    renderShortcuts(),
+    renderHeaderCleaner()
+  ]);
 });

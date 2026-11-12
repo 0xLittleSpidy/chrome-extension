@@ -13,13 +13,30 @@
 
   const STORAGE_KEYS = {
     ALLOWLIST: 'allowlist',
+    BLACKLIST: 'blacklist',
     SITE_REPLACER_STATE: 'site_replacer_state',
     SITE_STORAGE_STATE: 'site_storage_state',
+    SITE_SHORTCUTS_STATE: 'site_shortcuts_state',
     SNIPPETS: 'snippets',
+    CATEGORIES: 'categories',
+    SHORTCUTS: 'shortcuts',
+    UNWANTED_HEADERS: 'unwanted_headers',
     REPLACER_RULES: 'replacer_rules',
     STORAGE_FILE_CONFIGURED: 'storage_file_configured',
     THEME: 'theme'
   };
+
+  const DEFAULT_CATEGORIES = ['General'];
+
+  const DEFAULT_UNWANTED_HEADERS = [
+    'sec-fetch-*',
+    'sec-ch-ua-*',
+    'X-pwnfox-color',
+    'Accept-Language',
+    'Upgrade-Insecure-Requests',
+    'Priority',
+    'Accept-Encoding'
+  ];
 
   const DEFAULT_RULES = [
     {
@@ -44,6 +61,8 @@
     {
       id: 'snip-greeting',
       heading: 'Quick Greeting',
+      category: 'General',
+      order: 0,
       description: 'Hello, thank you for reaching out!',
       answers: [
         'Hello, thank you for reaching out!',
@@ -54,6 +73,8 @@
     {
       id: 'snip-signature',
       heading: 'Email Signature',
+      category: 'General',
+      order: 1,
       description: 'Best regards,\nHelper User',
       answers: [
         'Best regards,\nHelper User',
@@ -91,16 +112,19 @@
     if (!Array.isArray(rawList)) return [];
     return rawList
       .filter(item => item && item.heading)
-      .map(item => {
+      .map((item, idx) => {
         const answers = Array.isArray(item.answers) && item.answers.length > 0
           ? item.answers
           : [item.description || ''];
         return {
           ...item,
+          category: item.category ? String(item.category).trim() : 'General',
+          order: typeof item.order === 'number' ? item.order : idx,
           answers: answers,
           description: item.description || answers[0] || ''
         };
-      });
+      })
+      .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
   }
 
   async function getFromStorage(keys) {
@@ -134,8 +158,13 @@
   async function initializeDefaults() {
     const data = await getFromStorage([
       STORAGE_KEYS.ALLOWLIST,
+      STORAGE_KEYS.BLACKLIST,
+      STORAGE_KEYS.CATEGORIES,
+      STORAGE_KEYS.SHORTCUTS,
+      STORAGE_KEYS.UNWANTED_HEADERS,
       STORAGE_KEYS.SITE_REPLACER_STATE,
       STORAGE_KEYS.SITE_STORAGE_STATE,
+      STORAGE_KEYS.SITE_SHORTCUTS_STATE,
       STORAGE_KEYS.REPLACER_RULES
     ]);
 
@@ -143,11 +172,26 @@
     if (!Array.isArray(data[STORAGE_KEYS.ALLOWLIST])) {
       updates[STORAGE_KEYS.ALLOWLIST] = [];
     }
+    if (!Array.isArray(data[STORAGE_KEYS.BLACKLIST])) {
+      updates[STORAGE_KEYS.BLACKLIST] = [];
+    }
+    if (!Array.isArray(data[STORAGE_KEYS.CATEGORIES]) || data[STORAGE_KEYS.CATEGORIES].length === 0) {
+      updates[STORAGE_KEYS.CATEGORIES] = DEFAULT_CATEGORIES;
+    }
+    if (!Array.isArray(data[STORAGE_KEYS.SHORTCUTS])) {
+      updates[STORAGE_KEYS.SHORTCUTS] = [];
+    }
+    if (!Array.isArray(data[STORAGE_KEYS.UNWANTED_HEADERS]) || data[STORAGE_KEYS.UNWANTED_HEADERS].length === 0) {
+      updates[STORAGE_KEYS.UNWANTED_HEADERS] = DEFAULT_UNWANTED_HEADERS;
+    }
     if (!data[STORAGE_KEYS.SITE_REPLACER_STATE] || typeof data[STORAGE_KEYS.SITE_REPLACER_STATE] !== 'object') {
       updates[STORAGE_KEYS.SITE_REPLACER_STATE] = {};
     }
     if (!data[STORAGE_KEYS.SITE_STORAGE_STATE] || typeof data[STORAGE_KEYS.SITE_STORAGE_STATE] !== 'object') {
       updates[STORAGE_KEYS.SITE_STORAGE_STATE] = {};
+    }
+    if (!data[STORAGE_KEYS.SITE_SHORTCUTS_STATE] || typeof data[STORAGE_KEYS.SITE_SHORTCUTS_STATE] !== 'object') {
+      updates[STORAGE_KEYS.SITE_SHORTCUTS_STATE] = {};
     }
     if (!Array.isArray(data[STORAGE_KEYS.REPLACER_RULES]) || data[STORAGE_KEYS.REPLACER_RULES].length === 0) {
       updates[STORAGE_KEYS.REPLACER_RULES] = DEFAULT_RULES;
@@ -192,6 +236,174 @@
   async function setAllowlist(list) {
     const cleanList = Array.isArray(list) ? list : [];
     await setToStorage({ [STORAGE_KEYS.ALLOWLIST]: cleanList });
+  }
+
+  // --- Blacklist API ---
+  async function getBlacklist() {
+    const data = await getFromStorage([STORAGE_KEYS.BLACKLIST]);
+    return Array.isArray(data[STORAGE_KEYS.BLACKLIST]) ? data[STORAGE_KEYS.BLACKLIST] : [];
+  }
+
+  async function setBlacklist(list) {
+    const cleanList = Array.isArray(list) ? list : [];
+    await setToStorage({ [STORAGE_KEYS.BLACKLIST]: cleanList });
+  }
+
+  async function addBlacklist(pattern) {
+    if (!pattern || typeof pattern !== 'string') return;
+    const clean = pattern.trim();
+    if (!clean) return;
+    const list = await getBlacklist();
+    if (!list.includes(clean)) {
+      list.push(clean);
+      await setBlacklist(list);
+    }
+    return list;
+  }
+
+  async function removeBlacklist(pattern) {
+    if (!pattern) return;
+    const clean = pattern.trim();
+    const list = await getBlacklist();
+    const updated = list.filter(p => p !== clean);
+    await setBlacklist(updated);
+    return updated;
+  }
+
+  // --- Categories API ---
+  async function getCategories() {
+    const data = await getFromStorage([STORAGE_KEYS.CATEGORIES]);
+    if (Array.isArray(data[STORAGE_KEYS.CATEGORIES]) && data[STORAGE_KEYS.CATEGORIES].length > 0) {
+      return data[STORAGE_KEYS.CATEGORIES];
+    }
+    return DEFAULT_CATEGORIES;
+  }
+
+  async function setCategories(list) {
+    const cleanList = Array.isArray(list) && list.length > 0 ? list : DEFAULT_CATEGORIES;
+    await setToStorage({ [STORAGE_KEYS.CATEGORIES]: cleanList });
+  }
+
+  async function addCategory(name) {
+    if (!name || typeof name !== 'string') return;
+    const clean = name.trim();
+    if (!clean) return;
+    const list = await getCategories();
+    if (!list.includes(clean)) {
+      list.push(clean);
+      await setCategories(list);
+    }
+    return list;
+  }
+
+  async function deleteCategory(name) {
+    if (!name) return;
+    const clean = name.trim();
+    if (clean === 'General') return;
+    const list = await getCategories();
+    const updated = list.filter(c => c !== clean);
+    await setCategories(updated.length > 0 ? updated : DEFAULT_CATEGORIES);
+    const snippets = await getSnippets();
+    let changed = false;
+    snippets.forEach(s => {
+      if (s.category === clean) {
+        s.category = 'General';
+        changed = true;
+      }
+    });
+    if (changed) {
+      const localArea = getLocalStorageArea();
+      if (localArea) await localArea.set({ [STORAGE_KEYS.SNIPPETS]: snippets });
+    }
+  }
+
+  // --- Shortcuts API ---
+  async function getShortcuts() {
+    const data = await getFromStorage([STORAGE_KEYS.SHORTCUTS]);
+    return Array.isArray(data[STORAGE_KEYS.SHORTCUTS]) ? data[STORAGE_KEYS.SHORTCUTS] : [];
+  }
+
+  async function setShortcuts(list) {
+    const cleanList = Array.isArray(list) ? list : [];
+    await setToStorage({ [STORAGE_KEYS.SHORTCUTS]: cleanList });
+  }
+
+  async function saveShortcut(shortcut) {
+    if (!shortcut || !shortcut.name || !shortcut.keys) {
+      throw new Error('Shortcut name and keys are required');
+    }
+    const list = await getShortcuts();
+    const cleanShortcut = {
+      id: shortcut.id || 'sc-' + Date.now() + '-' + Math.random().toString(36).substring(2, 7),
+      name: String(shortcut.name).trim(),
+      keys: String(shortcut.keys).trim(),
+      updatedAt: Date.now()
+    };
+    const existingIndex = list.findIndex(item => item.id === cleanShortcut.id);
+    if (existingIndex !== -1) {
+      list[existingIndex] = cleanShortcut;
+    } else {
+      list.push(cleanShortcut);
+    }
+    await setShortcuts(list);
+    return cleanShortcut;
+  }
+
+  async function deleteShortcut(id) {
+    if (!id) return;
+    const list = await getShortcuts();
+    const updated = list.filter(item => item.id !== id);
+    await setShortcuts(updated);
+  }
+
+  async function getSiteShortcutsEnabled(domain) {
+    if (!domain) return true;
+    const data = await getFromStorage([STORAGE_KEYS.SITE_SHORTCUTS_STATE]);
+    const stateMap = data[STORAGE_KEYS.SITE_SHORTCUTS_STATE] || {};
+    return stateMap[domain] !== false;
+  }
+
+  async function setSiteShortcutsEnabled(domain, isEnabled) {
+    if (!domain) return;
+    const data = await getFromStorage([STORAGE_KEYS.SITE_SHORTCUTS_STATE]);
+    const stateMap = data[STORAGE_KEYS.SITE_SHORTCUTS_STATE] || {};
+    stateMap[domain] = Boolean(isEnabled);
+    await setToStorage({ [STORAGE_KEYS.SITE_SHORTCUTS_STATE]: stateMap });
+  }
+
+  // --- Unwanted Headers (Header Cleaner) API ---
+  async function getUnwantedHeaders() {
+    const data = await getFromStorage([STORAGE_KEYS.UNWANTED_HEADERS]);
+    if (Array.isArray(data[STORAGE_KEYS.UNWANTED_HEADERS]) && data[STORAGE_KEYS.UNWANTED_HEADERS].length > 0) {
+      return data[STORAGE_KEYS.UNWANTED_HEADERS];
+    }
+    return DEFAULT_UNWANTED_HEADERS;
+  }
+
+  async function setUnwantedHeaders(list) {
+    const cleanList = Array.isArray(list) && list.length > 0 ? list : DEFAULT_UNWANTED_HEADERS;
+    await setToStorage({ [STORAGE_KEYS.UNWANTED_HEADERS]: cleanList });
+  }
+
+  async function addUnwantedHeader(pattern) {
+    if (!pattern || typeof pattern !== 'string') return;
+    const clean = pattern.trim();
+    if (!clean) return;
+    const list = await getUnwantedHeaders();
+    if (!list.includes(clean)) {
+      list.push(clean);
+      await setUnwantedHeaders(list);
+    }
+    return list;
+  }
+
+  async function deleteUnwantedHeader(pattern) {
+    if (!pattern) return;
+    const clean = pattern.trim();
+    const list = await getUnwantedHeaders();
+    const updated = list.filter(p => p.toLowerCase() !== clean.toLowerCase());
+    await setUnwantedHeaders(updated);
+    return updated;
   }
 
   // --- Per-Site Replacer Switch API ---
@@ -280,6 +492,8 @@
     const cleanSnippet = {
       id: snippet.id || 'snip-' + Date.now() + '-' + Math.random().toString(36).substring(2, 7),
       heading: String(snippet.heading).trim(),
+      category: snippet.category ? String(snippet.category).trim() : 'General',
+      order: typeof snippet.order === 'number' ? snippet.order : list.length,
       description: answers[0] || String(snippet.description || '').trim(),
       answers: answers,
       updatedAt: Date.now()
@@ -287,6 +501,9 @@
 
     const existingIndex = list.findIndex(item => item.id === cleanSnippet.id);
     if (existingIndex !== -1) {
+      if (typeof snippet.order !== 'number') {
+        cleanSnippet.order = list[existingIndex].order ?? existingIndex;
+      }
       list[existingIndex] = cleanSnippet;
     } else {
       list.push(cleanSnippet);
@@ -326,6 +543,37 @@
         await syncArea.set({ [STORAGE_KEYS.SNIPPETS]: updated });
       } catch (err) {}
     }
+  }
+
+  async function reorderSnippets(orderedIds) {
+    if (!Array.isArray(orderedIds)) return;
+    const list = await getSnippets();
+    const map = new Map(list.map(s => [s.id, s]));
+    const updated = [];
+    orderedIds.forEach((id, idx) => {
+      const item = map.get(id);
+      if (item) {
+        item.order = idx;
+        updated.push(item);
+        map.delete(id);
+      }
+    });
+    map.forEach(item => {
+      item.order = updated.length;
+      updated.push(item);
+    });
+
+    const localArea = getLocalStorageArea();
+    if (localArea) {
+      await localArea.set({ [STORAGE_KEYS.SNIPPETS]: updated });
+    }
+    const syncArea = getSyncStorageArea();
+    if (syncArea && syncArea !== localArea) {
+      try {
+        await syncArea.set({ [STORAGE_KEYS.SNIPPETS]: updated });
+      } catch (err) {}
+    }
+    return updated;
   }
 
   // --- Replacer Rules API ---
@@ -370,23 +618,31 @@
 
   // --- Import / Export API ---
   async function exportConfiguration() {
-    const [allowlist, snippets, rules] = await Promise.all([
+    const [allowlist, blacklist, categories, shortcuts, unwantedHeaders, snippets, rules] = await Promise.all([
       getAllowlist(),
+      getBlacklist(),
+      getCategories(),
+      getShortcuts(),
+      getUnwantedHeaders(),
       getSnippets(),
       getReplacerRules()
     ]);
 
     return {
-      version: 1,
+      version: 2,
       appName: 'Helper',
       exportedAt: new Date().toISOString(),
       allowlist: allowlist,
+      blacklist: blacklist,
+      categories: categories,
+      shortcuts: shortcuts,
+      unwanted_headers: unwantedHeaders,
       snippets: snippets,
       replacer_rules: rules
     };
   }
 
-  async function importConfiguration(jsonString) {
+  async function importConfiguration(jsonString, mode = 'replace') {
     let parsed;
     try {
       parsed = typeof jsonString === 'string' ? JSON.parse(jsonString) : jsonString;
@@ -399,17 +655,96 @@
     }
 
     const updates = {};
+    const isMerge = mode === 'merge';
+
+    // Allowlist
     if (Array.isArray(parsed.allowlist)) {
-      updates[STORAGE_KEYS.ALLOWLIST] = parsed.allowlist;
-    }
-    if (Array.isArray(parsed.replacer_rules)) {
-      updates[STORAGE_KEYS.REPLACER_RULES] = parsed.replacer_rules.filter(r => r && r.find);
+      if (isMerge) {
+        const current = await getAllowlist();
+        const merged = Array.from(new Set([...current, ...parsed.allowlist]));
+        updates[STORAGE_KEYS.ALLOWLIST] = merged;
+      } else {
+        updates[STORAGE_KEYS.ALLOWLIST] = parsed.allowlist;
+      }
     }
 
+    // Blacklist
+    if (Array.isArray(parsed.blacklist)) {
+      if (isMerge) {
+        const current = await getBlacklist();
+        const merged = Array.from(new Set([...current, ...parsed.blacklist]));
+        updates[STORAGE_KEYS.BLACKLIST] = merged;
+      } else {
+        updates[STORAGE_KEYS.BLACKLIST] = parsed.blacklist;
+      }
+    }
+
+    // Categories
+    if (Array.isArray(parsed.categories)) {
+      if (isMerge) {
+        const current = await getCategories();
+        const merged = Array.from(new Set([...current, ...parsed.categories]));
+        updates[STORAGE_KEYS.CATEGORIES] = merged;
+      } else {
+        updates[STORAGE_KEYS.CATEGORIES] = parsed.categories;
+      }
+    }
+
+    // Shortcuts
+    if (Array.isArray(parsed.shortcuts)) {
+      const validShortcuts = parsed.shortcuts.filter(s => s && s.name && s.keys);
+      if (isMerge) {
+        const current = await getShortcuts();
+        const map = new Map(current.map(s => [s.id || s.name, s]));
+        validShortcuts.forEach(s => {
+          map.set(s.id || s.name, s);
+        });
+        updates[STORAGE_KEYS.SHORTCUTS] = Array.from(map.values());
+      } else {
+        updates[STORAGE_KEYS.SHORTCUTS] = validShortcuts;
+      }
+    }
+
+    // Unwanted Headers
+    if (Array.isArray(parsed.unwanted_headers)) {
+      if (isMerge) {
+        const current = await getUnwantedHeaders();
+        const merged = Array.from(new Set([...current, ...parsed.unwanted_headers]));
+        updates[STORAGE_KEYS.UNWANTED_HEADERS] = merged;
+      } else {
+        updates[STORAGE_KEYS.UNWANTED_HEADERS] = parsed.unwanted_headers;
+      }
+    }
+
+    // Replacer rules
+    if (Array.isArray(parsed.replacer_rules)) {
+      const validRules = parsed.replacer_rules.filter(r => r && r.find);
+      if (isMerge) {
+        const current = await getReplacerRules();
+        const map = new Map(current.map(r => [r.id || r.find, r]));
+        validRules.forEach(r => {
+          map.set(r.id || r.find, r);
+        });
+        updates[STORAGE_KEYS.REPLACER_RULES] = Array.from(map.values());
+      } else {
+        updates[STORAGE_KEYS.REPLACER_RULES] = validRules;
+      }
+    }
+
+    // Snippets
     let hasSnippets = false;
     if (Array.isArray(parsed.snippets)) {
       hasSnippets = true;
-      const cleanSnippets = normalizeSnippets(parsed.snippets);
+      let cleanSnippets = normalizeSnippets(parsed.snippets);
+      if (isMerge) {
+        const current = await getSnippets();
+        const map = new Map(current.map(s => [s.id || s.heading, s]));
+        cleanSnippets.forEach(s => {
+          map.set(s.id || s.heading, s);
+        });
+        cleanSnippets = normalizeSnippets(Array.from(map.values()));
+      }
+
       const localArea = getLocalStorageArea();
       if (localArea) {
         await localArea.set({ [STORAGE_KEYS.SNIPPETS]: cleanSnippets });
@@ -460,9 +795,31 @@
   return {
     STORAGE_KEYS: STORAGE_KEYS,
     DEFAULT_RULES: DEFAULT_RULES,
+    DEFAULT_CATEGORIES: DEFAULT_CATEGORIES,
+    DEFAULT_UNWANTED_HEADERS: DEFAULT_UNWANTED_HEADERS,
     initializeDefaults: initializeDefaults,
     getAllowlist: getAllowlist,
     setAllowlist: setAllowlist,
+    getBlacklist: getBlacklist,
+    setBlacklist: setBlacklist,
+    addBlacklist: addBlacklist,
+    addToBlacklist: addBlacklist,
+    removeBlacklist: removeBlacklist,
+    removeFromBlacklist: removeBlacklist,
+    getCategories: getCategories,
+    setCategories: setCategories,
+    addCategory: addCategory,
+    deleteCategory: deleteCategory,
+    getShortcuts: getShortcuts,
+    setShortcuts: setShortcuts,
+    saveShortcut: saveShortcut,
+    deleteShortcut: deleteShortcut,
+    getSiteShortcutsEnabled: getSiteShortcutsEnabled,
+    setSiteShortcutsEnabled: setSiteShortcutsEnabled,
+    getUnwantedHeaders: getUnwantedHeaders,
+    setUnwantedHeaders: setUnwantedHeaders,
+    addUnwantedHeader: addUnwantedHeader,
+    deleteUnwantedHeader: deleteUnwantedHeader,
     getSiteReplacerEnabled: getSiteReplacerEnabled,
     setSiteReplacerEnabled: setSiteReplacerEnabled,
     getSiteStorageEnabled: getSiteStorageEnabled,
@@ -470,6 +827,7 @@
     getSnippets: getSnippets,
     saveSnippet: saveSnippet,
     deleteSnippet: deleteSnippet,
+    reorderSnippets: reorderSnippets,
     getReplacerRules: getReplacerRules,
     saveReplacerRule: saveReplacerRule,
     deleteReplacerRule: deleteReplacerRule,

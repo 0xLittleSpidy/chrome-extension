@@ -44,12 +44,18 @@
         <span class="section-label">Current Website</span>
         <span id="current-site-host" class="current-host-name">Detecting...</span>
       </div>
-      <div class="current-site-actions">
-        <button id="toggle-current-site-btn" class="btn btn-primary">
+      <div class="current-site-actions" style="display: flex; gap: 8px;">
+        <button id="toggle-current-site-btn" class="btn btn-primary" style="flex: 1;">
           <svg class="btn-icon" viewBox="0 0 20 20" fill="currentColor">
             <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-11a1 1 0 10-2 0v2H7a1 1 0 100 2h2v2a1 1 0 102 0v-2h2a1 1 0 100-2h-2V7z" clip-rule="evenodd" />
           </svg>
           <span id="toggle-current-site-label">Add to Whitelist</span>
+        </button>
+        <button id="toggle-blacklist-btn" class="btn btn-secondary" style="flex: 1;">
+          <svg class="btn-icon" viewBox="0 0 20 20" fill="currentColor">
+            <path fill-rule="evenodd" d="M13.477 14.89A6 6 0 015.11 6.524l8.367 8.366zm1.414-1.414L6.525 5.11a6 6 0 018.366 8.366zM18 10a8 8 0 11-16 0 8 8 0 0116 0z" clip-rule="evenodd" />
+          </svg>
+          <span id="toggle-blacklist-label">Blacklist Path</span>
         </button>
       </div>
       <div id="add-feedback" class="feedback-msg"></div>
@@ -77,6 +83,17 @@
             <span class="slider"></span>
           </label>
         </div>
+
+        <div class="switch-row">
+          <div class="switch-info">
+            <span class="switch-title">Shortcuts on this site</span>
+            <span class="switch-desc">Enable flying shortcuts toolbar</span>
+          </div>
+          <label class="toggle-switch">
+            <input type="checkbox" id="toggle-site-shortcuts" checked>
+            <span class="slider"></span>
+          </label>
+        </div>
       </div>
     </section>
 
@@ -84,7 +101,10 @@
     <section class="card snippets-quick-card">
       <div class="card-header-flex">
         <span class="section-label">Saved Snippets</span>
-        <span id="popup-snippets-count" class="badge">0</span>
+        <div style="display: flex; gap: 6px; align-items: center;">
+          <select id="popup-category-filter" class="popup-category-select" style="display: none;"></select>
+          <span id="popup-snippets-count" class="badge">0</span>
+        </div>
       </div>
       <div id="popup-snippets-list" class="popup-snippets-list">
         <!-- Rendered dynamically -->

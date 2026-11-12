@@ -34,7 +34,7 @@ async function rebuildContextMenus() {
     try {
       chrome.contextMenus.create({
         id: CONTEXT_MENU_ROOT_ID,
-        title: 'Saved Snippets (Click to Copy)',
+        title: 'Saved Snippets',
         contexts: ['all']
       });
 
@@ -47,18 +47,47 @@ async function rebuildContextMenus() {
           title: 'No saved snippets (Click to open Settings)',
           contexts: ['all']
         });
-      } else {
-        snippets.forEach((item) => {
+        return;
+      }
+
+      // Group snippets by Category
+      const categoriesMap = new Map();
+      snippets.forEach(item => {
+        const cat = item.category || 'General';
+        if (!categoriesMap.has(cat)) {
+          categoriesMap.set(cat, []);
+        }
+        categoriesMap.get(cat).push(item);
+      });
+
+      const useCategorySubmenus = categoriesMap.size > 1;
+
+      for (const [catName, catSnippets] of categoriesMap.entries()) {
+        let parentMenuId = CONTEXT_MENU_ROOT_ID;
+
+        if (useCategorySubmenus) {
+          const catMenuId = `helper-cat-${catName.replace(/[^a-zA-Z0-9_-]/g, '_')}`;
+          chrome.contextMenus.create({
+            id: catMenuId,
+            parentId: CONTEXT_MENU_ROOT_ID,
+            title: catName,
+            contexts: ['all']
+          });
+          parentMenuId = catMenuId;
+        }
+
+        catSnippets.forEach((item) => {
           const answers = Array.isArray(item.answers) && item.answers.length > 0
             ? item.answers
             : [item.description || ''];
 
           if (answers.length > 1) {
-            // Parent menu for snippet with multiple answer options
+            // Parent menu for snippet with multiple answers
+            const snipParentId = `${CONTEXT_MENU_SNIPPET_PREFIX}${item.id}`;
             chrome.contextMenus.create({
-              id: `${CONTEXT_MENU_SNIPPET_PREFIX}${item.id}`,
-              parentId: CONTEXT_MENU_ROOT_ID,
-              title: `Copy: ${item.heading || 'Untitled Snippet'} (${answers.length} options)`,
+              id: snipParentId,
+              parentId: parentMenuId,
+              title: `${item.heading || 'Untitled Snippet'} (${answers.length})`,
               contexts: ['all']
             });
 
@@ -67,8 +96,8 @@ async function rebuildContextMenus() {
               const preview = answerText.replace(/\s+/g, ' ').trim().slice(0, 36);
               chrome.contextMenus.create({
                 id: `${CONTEXT_MENU_SNIPPET_PREFIX}${item.id}_ans_${idx}`,
-                parentId: `${CONTEXT_MENU_SNIPPET_PREFIX}${item.id}`,
-                title: `Option ${idx + 1}: ${preview}${answerText.length > 36 ? '...' : ''}`,
+                parentId: snipParentId,
+                title: `${idx + 1}. ${preview}${answerText.length > 36 ? '...' : ''}`,
                 contexts: ['all']
               });
             });
@@ -76,8 +105,8 @@ async function rebuildContextMenus() {
             // Single answer item
             chrome.contextMenus.create({
               id: `${CONTEXT_MENU_SNIPPET_PREFIX}${item.id}`,
-              parentId: CONTEXT_MENU_ROOT_ID,
-              title: `Copy: ${item.heading || 'Untitled Snippet'}`,
+              parentId: parentMenuId,
+              title: `${item.heading || 'Untitled Snippet'}`,
               contexts: ['all']
             });
           }
@@ -184,18 +213,34 @@ if (chrome.contextMenus && chrome.contextMenus.onClicked) {
         ? snippet.answers
         : [snippet.description || ''];
 
-      let textToCopy = snippet.description;
+      let textToPaste = snippet.description;
       let optionLabel = snippet.heading;
       if (answerIndex >= 0 && answerIndex < answers.length) {
-        textToCopy = answers[answerIndex];
-        optionLabel = `${snippet.heading} (Option ${answerIndex + 1})`;
+        textToPaste = answers[answerIndex];
+        optionLabel = `${snippet.heading} (${answerIndex + 1})`;
       } else if (answers[0]) {
-        textToCopy = answers[0];
+        textToPaste = answers[0];
+      }
+
+      // Try pasting directly into active/focused field in tab
+      if (tab && tab.id) {
+        try {
+          chrome.tabs.sendMessage(tab.id, {
+            type: 'PASTE_SNIPPET',
+            text: textToPaste
+          }, () => {
+            if (chrome.runtime.lastError) {
+              // Non-scriptable page or content script inactive
+            }
+          });
+        } catch (e) {
+          // Ignore
+        }
       }
 
       try {
-        await copyToClipboard(textToCopy);
-        await notifyUser('Helper: Snippet Copied', `"${optionLabel}" copied to clipboard.`);
+        await copyToClipboard(textToPaste);
+        await notifyUser('Helper: Snippet Ready', `"${optionLabel}" ready.`);
       } catch (err) {
         await notifyUser('Helper: Copy Error', 'Failed to copy snippet to clipboard.');
       }
@@ -204,14 +249,28 @@ if (chrome.contextMenus && chrome.contextMenus.onClicked) {
 }
 
 /**
- * Updates action badge for a tab according to whether its URL is allowlisted
- * and whether Replacer switch is enabled.
+ * Updates action badge for a tab according to whether its URL is allowlisted,
+ * not blacklisted, and whether Replacer switch is enabled.
  */
 async function updateBadgeForTab(tabId, url) {
   if (!tabId || !url) return;
 
   try {
-    const allowlist = await StorageManager.getAllowlist();
+    const [allowlist, blacklist] = await Promise.all([
+      StorageManager.getAllowlist(),
+      StorageManager.getBlacklist()
+    ]);
+
+    // Check if blacklisted first (blacklist overrides allowlist)
+    if (AllowlistUtils.isUrlBlacklisted(url, blacklist)) {
+      await chrome.action.setBadgeText({ tabId, text: '' });
+      await chrome.action.setTitle({
+        tabId,
+        title: 'Helper: Inactive (Path is blacklisted)'
+      });
+      return;
+    }
+
     const isAllowed = AllowlistUtils.isUrlAllowed(url, allowlist);
 
     if (isAllowed) {
@@ -277,7 +336,7 @@ chrome.tabs.onActivated.addListener(async (activeInfo) => {
 
 // Update tabs and menus when storage changes
 chrome.storage.onChanged.addListener(async (changes, areaName) => {
-  if (changes.allowlist || changes.site_replacer_state || changes.site_storage_state) {
+  if (changes.allowlist || changes.blacklist || changes.site_replacer_state || changes.site_storage_state) {
     try {
       const tabs = await chrome.tabs.query({});
       for (const tab of tabs) {
@@ -290,8 +349,8 @@ chrome.storage.onChanged.addListener(async (changes, areaName) => {
     }
   }
 
-  if (changes.snippets) {
-    if (areaName === 'sync' && Array.isArray(changes.snippets.newValue)) {
+  if (changes.snippets || changes.categories) {
+    if (changes.snippets && areaName === 'sync' && Array.isArray(changes.snippets.newValue)) {
       try {
         await chrome.storage.local.set({ snippets: changes.snippets.newValue });
       } catch (err) {

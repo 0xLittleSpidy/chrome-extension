@@ -13,11 +13,17 @@
 
   let isEnabledOnThisPage = false;
   let activeRules = [];
+  let activeShortcuts = [];
+  let activeUnwantedHeaders = [];
+  let isShortcutsEnabledOnSite = true;
   let shadowRoot = null;
   let hostElement = null;
   let floatingTooltip = null;
   let headerFloatingBar = null;
+  let selectionFloatingBar = null;
+  let flyingToolbar = null;
   let activeFocusedElement = null;
+  let lastContextMenuTarget = null;
   let resizeObserver = null;
   let mutationObserver = null;
   let lastKnownUrl = window.location.href;
@@ -31,23 +37,55 @@
   const SUPPORTED_INPUT_TYPES = new Set(['text', 'search', 'url', 'email', 'tel', '']);
 
   /**
-   * Initializes or tears down the extension on this page based on whitelist
-   * and per-site replacer switch status.
+   * Initializes or tears down the extension on this page based on whitelist,
+   * blacklist, and per-site switch statuses.
    */
   async function checkAllowlistAndInitialize() {
     try {
-      const data = await chrome.storage.sync.get(['allowlist', 'site_replacer_state', 'replacer_rules']);
+      const data = await chrome.storage.sync.get([
+        'allowlist',
+        'blacklist',
+        'site_replacer_state',
+        'site_shortcuts_state',
+        'replacer_rules',
+        'shortcuts',
+        'unwanted_headers'
+      ]);
       const allowlist = Array.isArray(data.allowlist) ? data.allowlist : [];
+      const blacklist = Array.isArray(data.blacklist) ? data.blacklist : [];
       const siteReplacerState = data.site_replacer_state || {};
+      const siteShortcutsState = data.site_shortcuts_state || {};
+
+      // 1. Blacklist check overrides everything
+      if (AllowlistUtils.isUrlBlacklisted(window.location.href, blacklist)) {
+        if (isEnabledOnThisPage) {
+          deactivateExtension();
+        }
+        return;
+      }
 
       activeRules = Array.isArray(data.replacer_rules) && data.replacer_rules.length > 0
         ? data.replacer_rules
         : (typeof TextScanner !== 'undefined' && TextScanner.DEFAULT_RULES ? TextScanner.DEFAULT_RULES : []);
 
+      activeShortcuts = Array.isArray(data.shortcuts) ? data.shortcuts : [];
+      activeUnwantedHeaders = Array.isArray(data.unwanted_headers) && data.unwanted_headers.length > 0
+        ? data.unwanted_headers
+        : [
+            'sec-fetch-*',
+            'sec-ch-ua-*',
+            'X-pwnfox-color',
+            'Accept-Language',
+            'Upgrade-Insecure-Requests',
+            'Priority',
+            'Accept-Encoding'
+          ];
+
       const allowed = AllowlistUtils.isUrlAllowed(window.location.href, allowlist);
       const matchedPattern = AllowlistUtils.getMatchingPattern(window.location.href, allowlist);
       const siteKey = matchedPattern || AllowlistUtils.getSiteIdentifier(window.location.href);
       const replacerEnabledOnSite = siteReplacerState[siteKey] !== false;
+      isShortcutsEnabledOnSite = siteShortcutsState[siteKey] !== false;
 
       const shouldBeActive = Boolean(allowed && replacerEnabledOnSite);
 
@@ -58,6 +96,7 @@
       } else if (shouldBeActive && isEnabledOnThisPage) {
         // Refresh overlays if rules or status changed
         scanAllFields();
+        rebuildFlyingToolbar();
       }
     } catch (err) {
       console.warn('[Helper] Failed to check status:', err);
@@ -129,6 +168,47 @@
 
     headerFloatingBar.appendChild(btnContainer);
     shadowRoot.appendChild(headerFloatingBar);
+
+    // Create shared Universal Selection Transformations Bar
+    selectionFloatingBar = document.createElement('div');
+    selectionFloatingBar.className = 'helper-selection-floating-bar';
+    selectionFloatingBar.style.display = 'none';
+
+    const selBarLabel = document.createElement('span');
+    selBarLabel.className = 'helper-bar-label';
+    selBarLabel.textContent = 'Transform';
+    selectionFloatingBar.appendChild(selBarLabel);
+
+    const selBtnContainer = document.createElement('div');
+    selBtnContainer.className = 'helper-bar-buttons';
+
+    buttonsConfig.forEach(cfg => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'helper-bar-btn' + (cfg.isRed ? ' helper-bar-btn-red' : '');
+      btn.textContent = cfg.text;
+      btn.dataset.action = cfg.action;
+      btn.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+      });
+      btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        handleSelectionTransformation(cfg.action);
+      });
+      selBtnContainer.appendChild(btn);
+    });
+
+    selectionFloatingBar.appendChild(selBtnContainer);
+    shadowRoot.appendChild(selectionFloatingBar);
+
+    // Create shared Flying Toolbar for textboxes
+    flyingToolbar = document.createElement('div');
+    flyingToolbar.className = 'helper-flying-toolbar';
+    flyingToolbar.style.display = 'none';
+    shadowRoot.appendChild(flyingToolbar);
+
+    rebuildFlyingToolbar();
 
     const targetContainer = document.body || document.documentElement;
     targetContainer.appendChild(hostElement);
@@ -312,6 +392,393 @@
   }
 
   /**
+   * Rebuilds the buttons inside the flying toolbar for textboxes.
+   */
+  function rebuildFlyingToolbar() {
+    if (!flyingToolbar) return;
+    flyingToolbar.innerHTML = '';
+
+    // "Remove Unwanted Headers" button
+    const removeHeadersBtn = document.createElement('button');
+    removeHeadersBtn.type = 'button';
+    removeHeadersBtn.className = 'helper-flying-header-btn';
+    removeHeadersBtn.textContent = 'Remove Unwanted Headers';
+    removeHeadersBtn.title = 'Strip sec-fetch-*, sec-ch-ua-*, and other configured unwanted headers from this text field';
+    removeHeadersBtn.addEventListener('mousedown', (e) => e.preventDefault());
+    removeHeadersBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (activeFocusedElement) {
+        removeUnwantedHeadersFromElement(activeFocusedElement);
+      }
+    });
+    flyingToolbar.appendChild(removeHeadersBtn);
+
+    // Shortcuts buttons
+    if (Array.isArray(activeShortcuts) && activeShortcuts.length > 0) {
+      activeShortcuts.forEach(sc => {
+        const scBtn = document.createElement('button');
+        scBtn.type = 'button';
+        scBtn.className = 'helper-flying-shortcut-btn';
+        scBtn.textContent = sc.name;
+        scBtn.title = `Run ${sc.name} (${sc.keys})`;
+        scBtn.addEventListener('mousedown', (e) => e.preventDefault());
+        scBtn.addEventListener('click', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          if (activeFocusedElement) {
+            executeShortcutOnElement(activeFocusedElement, sc);
+          }
+        });
+        flyingToolbar.appendChild(scBtn);
+      });
+    }
+  }
+
+  /**
+   * Positions and displays the flying toolbar for the focused textbox.
+   */
+  function showFlyingToolbar(element) {
+    if (!flyingToolbar || !isElementVisible(element) || !isEnabledOnThisPage || !isShortcutsEnabledOnSite) {
+      hideFlyingToolbar();
+      return;
+    }
+
+    flyingToolbar.style.display = 'flex';
+    const elemRect = element.getBoundingClientRect();
+    const barRect = flyingToolbar.getBoundingClientRect();
+
+    let top = elemRect.top - barRect.height - 6;
+    if (top < 6) {
+      top = elemRect.top + 6;
+    }
+    let left = elemRect.right - barRect.width;
+    if (left < 6) left = 6;
+    if (left + barRect.width > window.innerWidth - 6) {
+      left = window.innerWidth - barRect.width - 6;
+    }
+
+    flyingToolbar.style.top = `${top}px`;
+    flyingToolbar.style.left = `${left}px`;
+  }
+
+  function hideFlyingToolbar() {
+    if (flyingToolbar) {
+      flyingToolbar.style.display = 'none';
+    }
+  }
+
+  /**
+   * Matches a line of text against an unwanted header pattern (supports prefix wildcards like sec-fetch-* and base headers like sec-ch-ua).
+   */
+  function matchesHeaderPattern(line, pattern) {
+    if (!line || !pattern) return false;
+    const cleanPat = pattern.trim().toLowerCase().replace(/:$/, '');
+    const colonIdx = line.indexOf(':');
+    const headerName = (colonIdx !== -1 ? line.slice(0, colonIdx) : line).trim().toLowerCase();
+
+    if (cleanPat.endsWith('*')) {
+      const prefix = cleanPat.slice(0, -1);
+      const prefixWithoutDash = prefix.endsWith('-') ? prefix.slice(0, -1) : prefix;
+      return headerName.startsWith(prefix) || headerName === prefixWithoutDash;
+    }
+    return headerName === cleanPat;
+  }
+
+  /**
+   * Removes all lines matching configured unwanted headers from the element.
+   */
+  function removeUnwantedHeadersFromElement(element) {
+    if (!element) return;
+    const currentText = getElementText(element);
+    const lines = currentText.split(/\r?\n/);
+    const patterns = (activeUnwantedHeaders && activeUnwantedHeaders.length > 0)
+      ? activeUnwantedHeaders
+      : [
+          'sec-fetch-*',
+          'sec-ch-ua-*',
+          'X-pwnfox-color',
+          'Accept-Language',
+          'Upgrade-Insecure-Requests',
+          'Priority',
+          'Accept-Encoding'
+        ];
+
+    let removedCount = 0;
+    const filteredLines = lines.filter(line => {
+      const isUnwanted = patterns.some(pat => matchesHeaderPattern(line, pat));
+      if (isUnwanted) removedCount++;
+      return !isUnwanted;
+    });
+
+    if (removedCount > 0) {
+      const newText = filteredLines.join('\n');
+      setNativeValue(element, newText);
+      element.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
+      element.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
+      updateOverlayForElement(element);
+      showTemporaryStatusFeedback(`Removed ${removedCount} unwanted header line${removedCount === 1 ? '' : 's'}`);
+    } else {
+      showTemporaryStatusFeedback('No unwanted headers found');
+    }
+  }
+
+  /**
+   * Executes a keyboard shortcut or action on the active element.
+   */
+  async function executeShortcutOnElement(element, shortcut) {
+    if (!element || !shortcut || !shortcut.keys) return;
+    element.focus();
+    const keyLower = shortcut.keys.toLowerCase().replace(/\s+/g, '');
+
+    if (keyLower.includes('ctrl+c') || keyLower === 'copy') {
+      try {
+        const selText = getSelectedText(element);
+        if (selText) {
+          await navigator.clipboard.writeText(selText);
+          showTemporaryStatusFeedback('Copied to clipboard');
+        } else {
+          document.execCommand('copy');
+        }
+      } catch (err) {
+        document.execCommand('copy');
+      }
+      return;
+    }
+
+    if (keyLower.includes('ctrl+v') || keyLower === 'paste') {
+      try {
+        const clipText = await navigator.clipboard.readText();
+        if (clipText) {
+          pasteTextIntoActiveElement(clipText);
+          showTemporaryStatusFeedback('Pasted from clipboard');
+        }
+      } catch (err) {
+        document.execCommand('paste');
+      }
+      return;
+    }
+
+    if (keyLower.includes('ctrl+a') || keyLower === 'selectall') {
+      if (typeof element.select === 'function') {
+        element.select();
+      } else {
+        document.execCommand('selectAll');
+      }
+      return;
+    }
+
+    if (keyLower.includes('ctrl+z') || keyLower === 'undo') {
+      document.execCommand('undo');
+      element.dispatchEvent(new Event('input', { bubbles: true }));
+      updateOverlayForElement(element);
+      return;
+    }
+
+    // Generic key event simulation
+    const parts = keyLower.split('+');
+    const mainKey = parts[parts.length - 1];
+    const hasCtrl = parts.includes('ctrl');
+    const hasShift = parts.includes('shift');
+    const hasAlt = parts.includes('alt');
+
+    const eventOpts = {
+      key: mainKey,
+      code: 'Key' + mainKey.toUpperCase(),
+      ctrlKey: hasCtrl,
+      shiftKey: hasShift,
+      altKey: hasAlt,
+      bubbles: true,
+      cancelable: true
+    };
+
+    element.dispatchEvent(new KeyboardEvent('keydown', eventOpts));
+    element.dispatchEvent(new KeyboardEvent('keypress', eventOpts));
+    element.dispatchEvent(new KeyboardEvent('keyup', eventOpts));
+  }
+
+  /**
+   * Gets selected text from element or window selection.
+   */
+  function getSelectedText(element) {
+    if (element && (element.tagName === 'TEXTAREA' || element.tagName === 'INPUT')) {
+      if (typeof element.selectionStart === 'number' && typeof element.selectionEnd === 'number') {
+        return element.value.substring(element.selectionStart, element.selectionEnd);
+      }
+    }
+    const sel = window.getSelection();
+    return sel ? sel.toString() : '';
+  }
+
+  /**
+   * Displays the Universal Selection Transformations Bar above highlighted text.
+   */
+  function checkAndShowSelectionFloatingBar(element) {
+    if (!selectionFloatingBar || !isEnabledOnThisPage) return;
+    const selectedText = getSelectedText(element);
+    if (!selectedText || selectedText.trim().length === 0) {
+      hideSelectionFloatingBar();
+      return;
+    }
+    showSelectionFloatingBar(element);
+  }
+
+  function showSelectionFloatingBar(element) {
+    if (!selectionFloatingBar || !isElementVisible(element)) return;
+
+    selectionFloatingBar.style.display = 'flex';
+    const elemRect = element.getBoundingClientRect();
+    const barRect = selectionFloatingBar.getBoundingClientRect();
+
+    let top = elemRect.top - barRect.height - 8;
+    if (top < 6) {
+      top = elemRect.bottom + 8;
+    }
+
+    let left = elemRect.left + 20;
+    if (left < 6) left = 6;
+    const maxLeft = window.innerWidth - barRect.width - 6;
+    if (left > maxLeft) left = maxLeft;
+
+    selectionFloatingBar.style.top = `${top}px`;
+    selectionFloatingBar.style.left = `${left}px`;
+  }
+
+  function hideSelectionFloatingBar() {
+    if (selectionFloatingBar) {
+      selectionFloatingBar.style.display = 'none';
+    }
+  }
+
+  /**
+   * Handles Universal Selection Transformation directly on selected text.
+   */
+  function handleSelectionTransformation(action) {
+    const el = activeFocusedElement || document.activeElement;
+    if (!el) return;
+
+    const mode = (action === 'truncate' || action === 'red-color-truncate') ? 'truncate' : 'redact';
+    const useRed = (action === 'red-color-truncate' || action === 'red-color-redact');
+
+    if (el.tagName && (el.tagName.toLowerCase() === 'textarea' || el.tagName.toLowerCase() === 'input')) {
+      const start = el.selectionStart;
+      const end = el.selectionEnd;
+      if (typeof start !== 'number' || typeof end !== 'number' || start === end) return;
+
+      const val = el.value;
+      const selected = val.substring(start, end);
+      let transformed;
+      const tag = (mode === 'truncate') ? '[truncated]' : '[redacted]';
+      if (selected.length <= 6) {
+        transformed = tag;
+      } else {
+        transformed = selected.slice(0, 3) + tag + selected.slice(-3);
+      }
+
+      const newVal = val.slice(0, start) + transformed + val.slice(end);
+      setNativeValue(el, newVal);
+      el.selectionStart = el.selectionEnd = start + transformed.length;
+      el.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
+      el.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
+      updateOverlayForElement(el);
+      hideSelectionFloatingBar();
+    } else if (el.isContentEditable || window.getSelection()) {
+      const sel = window.getSelection();
+      if (!sel || sel.rangeCount === 0 || sel.isCollapsed) return;
+
+      const range = sel.getRangeAt(0);
+      const selected = range.toString();
+      if (!selected) return;
+
+      let first3 = '';
+      let last3 = '';
+      const tag = (mode === 'truncate') ? '[truncated]' : '[redacted]';
+      if (selected.length > 6) {
+        first3 = selected.slice(0, 3);
+        last3 = selected.slice(-3);
+      }
+
+      let replacementNode;
+      if (useRed) {
+        const span = document.createElement('span');
+        if (first3) {
+          const f3Span = document.createElement('span');
+          f3Span.style.color = '#dc2626';
+          f3Span.style.fontWeight = 'bold';
+          f3Span.textContent = first3;
+          span.appendChild(f3Span);
+        }
+        const b = document.createElement('b');
+        b.textContent = tag;
+        span.appendChild(b);
+        if (last3) {
+          const l3Span = document.createElement('span');
+          l3Span.style.color = '#dc2626';
+          l3Span.style.fontWeight = 'bold';
+          l3Span.textContent = last3;
+          span.appendChild(l3Span);
+        }
+        replacementNode = span;
+      } else {
+        const fullTag = first3 ? (first3 + tag + last3) : tag;
+        replacementNode = document.createTextNode(fullTag);
+      }
+
+      range.deleteContents();
+      range.insertNode(replacementNode);
+      sel.removeAllRanges();
+      el.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
+      updateOverlayForElement(el);
+      hideSelectionFloatingBar();
+    }
+  }
+
+  /**
+   * Inserts text directly into the active field and dispatches events.
+   */
+  function pasteTextIntoActiveElement(text) {
+    const el = (lastContextMenuTarget && isValidTextField(lastContextMenuTarget))
+      ? lastContextMenuTarget
+      : ((activeFocusedElement && isValidTextField(activeFocusedElement))
+        ? activeFocusedElement
+        : (isValidTextField(document.activeElement) ? document.activeElement : null));
+
+    if (!el) return;
+
+    if (el.tagName && (el.tagName.toLowerCase() === 'textarea' || el.tagName.toLowerCase() === 'input')) {
+      const start = typeof el.selectionStart === 'number' ? el.selectionStart : el.value.length;
+      const end = typeof el.selectionEnd === 'number' ? el.selectionEnd : el.value.length;
+      const val = el.value || '';
+      const newVal = val.slice(0, start) + text + val.slice(end);
+      setNativeValue(el, newVal);
+      el.selectionStart = el.selectionEnd = start + text.length;
+      el.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
+      el.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
+      updateOverlayForElement(el);
+    } else if (el.isContentEditable) {
+      el.focus();
+      document.execCommand('insertText', false, text);
+      el.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
+      updateOverlayForElement(el);
+    }
+  }
+
+  function showTemporaryStatusFeedback(msg) {
+    if (!floatingTooltip) return;
+    floatingTooltip.textContent = msg;
+    floatingTooltip.style.display = 'block';
+    floatingTooltip.classList.add('is-tooltip-visible');
+    if (activeFocusedElement) {
+      const rect = activeFocusedElement.getBoundingClientRect();
+      floatingTooltip.style.top = `${Math.max(6, rect.top - 28)}px`;
+      floatingTooltip.style.left = `${Math.max(6, rect.left + 10)}px`;
+    }
+    setTimeout(() => {
+      hideFloatingTooltip();
+    }, 2000);
+  }
+
+  /**
    * Executes header redaction or truncation on the target element.
    */
   function handleHeaderAction(element, action) {
@@ -389,6 +856,18 @@
     document.addEventListener('keyup', handleGlobalInputEvent, { capture: true, passive: true });
     document.addEventListener('change', handleGlobalInputEvent, { capture: true, passive: true });
     document.addEventListener('focusin', handleGlobalInputEvent, { capture: true, passive: true });
+    document.addEventListener('selectionchange', handleGlobalSelectionChange, { passive: true });
+    document.addEventListener('contextmenu', handleGlobalContextMenu, true);
+  }
+
+  function handleGlobalSelectionChange() {
+    if (activeFocusedElement) {
+      checkAndShowSelectionFloatingBar(activeFocusedElement);
+    }
+  }
+
+  function handleGlobalContextMenu(e) {
+    lastContextMenuTarget = e.target;
   }
 
   /**
@@ -412,6 +891,8 @@
     document.removeEventListener('keyup', handleGlobalInputEvent, true);
     document.removeEventListener('change', handleGlobalInputEvent, true);
     document.removeEventListener('focusin', handleGlobalInputEvent, true);
+    document.removeEventListener('selectionchange', handleGlobalSelectionChange);
+    document.removeEventListener('contextmenu', handleGlobalContextMenu, true);
 
     // Remove all overlays
     for (const [el, record] of trackedElements.entries()) {
@@ -424,8 +905,12 @@
 
     hideFloatingTooltip();
     hideHeaderFloatingBar();
+    hideSelectionFloatingBar();
+    hideFlyingToolbar();
     floatingTooltip = null;
     headerFloatingBar = null;
+    selectionFloatingBar = null;
+    flyingToolbar = null;
     activeFocusedElement = null;
 
     if (hostElement && hostElement.parentNode) {
@@ -542,24 +1027,45 @@
       updateOverlayForElement(element);
       if (document.activeElement === element) {
         checkAndShowHeaderFloatingBar(element);
+        showFlyingToolbar(element);
+        checkAndShowSelectionFloatingBar(element);
       }
     };
 
     const onScroll = () => {
       syncScroll(element);
-      if (activeFocusedElement === element && headerFloatingBar && headerFloatingBar.style.display !== 'none') {
-        showHeaderFloatingBar(element);
+      if (activeFocusedElement === element) {
+        if (headerFloatingBar && headerFloatingBar.style.display !== 'none') {
+          showHeaderFloatingBar(element);
+        }
+        if (flyingToolbar && flyingToolbar.style.display !== 'none') {
+          showFlyingToolbar(element);
+        }
+        if (selectionFloatingBar && selectionFloatingBar.style.display !== 'none') {
+          showSelectionFloatingBar(element);
+        }
       }
     };
 
     const onFocus = () => {
+      activeFocusedElement = element;
       checkAndShowHeaderFloatingBar(element);
+      showFlyingToolbar(element);
+      checkAndShowSelectionFloatingBar(element);
+    };
+
+    const onSelectionChange = () => {
+      if (activeFocusedElement === element) {
+        checkAndShowSelectionFloatingBar(element);
+      }
     };
 
     const onBlur = () => {
       setTimeout(() => {
         if (activeFocusedElement === element && document.activeElement !== element) {
           hideHeaderFloatingBar();
+          hideFlyingToolbar();
+          hideSelectionFloatingBar();
         }
       }, 250);
     };
@@ -570,6 +1076,8 @@
     element.addEventListener('paste', onUpdate);
     element.addEventListener('focus', onFocus);
     element.addEventListener('click', onFocus);
+    element.addEventListener('mouseup', onSelectionChange);
+    element.addEventListener('select', onSelectionChange);
     element.addEventListener('blur', onBlur);
     element.addEventListener('scroll', onScroll, { passive: true });
 
@@ -578,6 +1086,7 @@
       onUpdate,
       onScroll,
       onFocus,
+      onSelectionChange,
       onBlur,
       useRed: false
     };
@@ -587,10 +1096,12 @@
       resizeObserver.observe(element);
     }
 
-    // Initial overlay update and header check
+    // Initial overlay update and checks
     updateOverlayForElement(element);
     if (document.activeElement === element) {
+      activeFocusedElement = element;
       checkAndShowHeaderFloatingBar(element);
+      showFlyingToolbar(element);
     }
   }
 
@@ -603,6 +1114,8 @@
 
     if (activeFocusedElement === element) {
       hideHeaderFloatingBar();
+      hideFlyingToolbar();
+      hideSelectionFloatingBar();
       activeFocusedElement = null;
     }
 
@@ -626,6 +1139,10 @@
       element.removeEventListener('focus', record.onFocus);
       element.removeEventListener('click', record.onFocus);
     }
+    if (record.onSelectionChange) {
+      element.removeEventListener('mouseup', record.onSelectionChange);
+      element.removeEventListener('select', record.onSelectionChange);
+    }
     if (record.onBlur) {
       element.removeEventListener('blur', record.onBlur);
     }
@@ -645,7 +1162,10 @@
       } else {
         updateOverlayForElement(target);
       }
+      activeFocusedElement = target;
       checkAndShowHeaderFloatingBar(target);
+      showFlyingToolbar(target);
+      checkAndShowSelectionFloatingBar(target);
     }
   }
 
@@ -1027,9 +1547,18 @@
     };
   }
 
-  // React to storage changes in real time (e.g. user toggled whitelist, replacer switch, or updated rules)
+  // Handle messages from background service worker (e.g. direct paste from context menu)
+  chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    if (message && (message.type === 'PASTE_SNIPPET' || message.action === 'PASTE_SNIPPET')) {
+      pasteTextIntoActiveElement(message.text);
+      sendResponse({ success: true });
+      return true;
+    }
+  });
+
+  // React to storage changes in real time (e.g. user toggled whitelist, blacklist, replacer switch, shortcuts, or updated rules)
   chrome.storage.onChanged.addListener((changes) => {
-    if (changes.allowlist || changes.site_replacer_state || changes.replacer_rules) {
+    if (changes.allowlist || changes.blacklist || changes.site_replacer_state || changes.site_shortcuts_state || changes.replacer_rules || changes.shortcuts || changes.unwanted_headers) {
       checkAllowlistAndInitialize();
     }
   });

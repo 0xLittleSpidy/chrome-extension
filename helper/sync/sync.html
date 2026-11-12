@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Helper - Storage File Sync</title>
+  <link rel="stylesheet" href="../settings/settings.css">
+  <link rel="stylesheet" href="sync.css">
+</head>
+<body>
+  <div class="sync-container">
+    <header class="sync-header">
+      <div class="header-brand">
+        <div class="logo-icon">H</div>
+        <div>
+          <h1 class="sync-title">Storage File Sync</h1>
+          <p class="sync-subtitle">Sync your snippets, rules, shortcuts, headers, and allow/blacklists directly with a local file.</p>
+        </div>
+      </div>
+      <div class="sync-header-actions">
+        <a href="../settings/settings.html" class="btn btn-secondary">Open Settings</a>
+        <button id="theme-toggle-btn" class="btn btn-secondary" type="button">Theme: Dark</button>
+      </div>
+    </header>
+
+    <main class="sync-main">
+      <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+      <!-- File Connection Status Card -->
+      <section class="card sync-card">
+        <div class="card-header-flex">
+          <h2 class="card-title">File Connection Status</h2>
+          <span id="sync-status-badge" class="badge badge-disconnected">Disconnected</span>
+        </div>
+        <p class="card-subtext">Bind Helper to a local JSON file using the File System Access API. Any updates can be written to disk to keep multiple browsers or backups up to date.</p>
+        
+        <div class="file-details-box">
+          <div class="file-detail-row">
+            <span class="detail-label">Connected File:</span>
+            <span id="connected-file-name" class="detail-value">No file connected</span>
+          </div>
+          <div class="file-detail-row">
+            <span class="detail-label">Last Synchronized:</span>
+            <span id="last-sync-time" class="detail-value">Never</span>
+          </div>
+          <div class="file-detail-row">
+            <span class="detail-label">Auto-Sync on Changes:</span>
+            <span id="auto-sync-status" class="detail-value">Disabled</span>
+          </div>
+        </div>
+
+        <div class="sync-actions-row">
+          <button id="connect-file-btn" class="btn btn-primary">Connect Local File</button>
+          <button id="sync-now-btn" class="btn btn-secondary" disabled>Sync to File Now</button>
+          <button id="pull-from-file-btn" class="btn btn-secondary" disabled>Load from File</button>
+          <button id="disconnect-file-btn" class="btn btn-danger" style="display: none;">Disconnect File</button>
+        </div>
+      </section>
+
+      <!-- Sync Settings Card -->
+      <section class="card sync-card">
+        <h2 class="card-title">Synchronization Preferences</h2>
+        <div class="sync-preference-row">
+          <div>
+            <span class="preference-title">Auto-Sync to File</span>
+            <p class="preference-desc">Automatically write modifications (snippets, rules, shortcuts) to the connected file when updated.</p>
+          </div>
+          <label class="toggle-switch">
+            <input type="checkbox" id="toggle-auto-sync">
+            <span class="slider"></span>
+          </label>
+        </div>
+      </section>
+    </main>
+
+    <!-- Collision Resolution Modal -->
+    <div id="collision-modal" class="modal-overlay" style="display: none;">
+      <div class="modal-card">
+        <h3 class="modal-title">Existing Data Detected in File</h3>
+        <p class="modal-desc">The selected file already contains helper data. How would you like to proceed?</p>
+        
+        <div id="collision-summary" class="collision-summary">
+          <!-- Populated dynamically -->
+        </div>
+
+        <div class="modal-options">
+          <button id="collision-merge-btn" class="btn btn-primary modal-btn">
+            <strong>Merge / Extend</strong>
+            <span>Combine file values with local data; keep all unique items</span>
+          </button>
+          <button id="collision-overwrite-file-btn" class="btn btn-secondary modal-btn">
+            <strong>Overwrite File</strong>
+            <span>Replace file contents with current browser data</span>
+          </button>
+          <button id="collision-replace-local-btn" class="btn btn-secondary modal-btn">
+            <strong>Replace Local Storage</strong>
+            <span>Discard local browser data and load from file</span>
+          </button>
+          <button id="collision-cancel-btn" class="btn btn-ghost modal-btn">
+            <strong>Cancel</strong>
+            <span>Do not connect this file</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="../lib/allowlist-utils.js"></script>
+  <script src="../lib/storage-manager.js"></script>
+  <script src="sync.js"></script>
+</body>
+</html>

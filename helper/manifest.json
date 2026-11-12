@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Helper",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "Productivity assistant for text replacement, snippet clipboard storage, and domain management.",
   "icons": {
     "16": "icons/icon-16.png",

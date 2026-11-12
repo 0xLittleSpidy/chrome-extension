@@ -179,3 +179,84 @@
   border-radius: 2px !important;
 }
 
+/* Flying Shortcuts & Header Cleaner Toolbar inside textboxes */
+.helper-flying-toolbar {
+  position: fixed !important;
+  z-index: 2147483647 !important;
+  background-color: #0f172a !important;
+  border: 1px solid #334155 !important;
+  box-shadow: 0 8px 18px -2px rgba(0, 0, 0, 0.35) !important;
+  border-radius: 6px !important;
+  padding: 4px 8px !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+  pointer-events: auto !important;
+  user-select: none !important;
+  -webkit-user-select: none !important;
+  animation: helper-bar-fadein 0.15s ease-out !important;
+}
+
+.helper-flying-header-btn {
+  background-color: #3b82f6 !important;
+  color: #ffffff !important;
+  border: 1px solid #60a5fa !important;
+  border-radius: 4px !important;
+  padding: 3px 8px !important;
+  font-size: 11px !important;
+  font-weight: 600 !important;
+  cursor: pointer !important;
+  white-space: nowrap !important;
+  transition: all 0.15s ease !important;
+  line-height: 1.2 !important;
+}
+
+.helper-flying-header-btn:hover {
+  background-color: #2563eb !important;
+  border-color: #93c5fd !important;
+}
+
+.helper-flying-shortcut-btn {
+  background-color: #1e293b !important;
+  color: #f1f5f9 !important;
+  border: 1px solid #475569 !important;
+  border-radius: 4px !important;
+  padding: 3px 7px !important;
+  font-size: 11px !important;
+  font-weight: 500 !important;
+  cursor: pointer !important;
+  white-space: nowrap !important;
+  transition: all 0.15s ease !important;
+  line-height: 1.2 !important;
+}
+
+.helper-flying-shortcut-btn:hover {
+  background-color: #334155 !important;
+  border-color: #64748b !important;
+  color: #ffffff !important;
+}
+
+.helper-flying-shortcut-btn:active {
+  transform: translateY(1px) !important;
+}
+
+/* Universal Selection Transformations Bar */
+.helper-selection-floating-bar {
+  position: fixed !important;
+  z-index: 2147483647 !important;
+  background-color: #1e293b !important;
+  border: 1px solid #334155 !important;
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.35) !important;
+  border-radius: 8px !important;
+  padding: 5px 8px !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+  pointer-events: auto !important;
+  user-select: none !important;
+  -webkit-user-select: none !important;
+  animation: helper-bar-fadein 0.15s ease-out !important;
+}
+

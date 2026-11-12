@@ -389,5 +389,103 @@ console.log('--- RUNNING UNIT TESTS ---');
   const shortRedacted = testTransformHeaders(shortInput, 'redact');
   assert.strictEqual(shortRedacted, 'Authorization: Bearer [redacted]\ncookie: session=[redacted]');
 
+  // 13. Test Blacklist Matching
+  const blacklist = ['/admin/*', 'example.com/checkout', '*.internal.org'];
+  assert.strictEqual(AllowlistUtils.isUrlBlacklisted('https://example.com/admin/settings', blacklist), true);
+  assert.strictEqual(AllowlistUtils.isUrlBlacklisted('https://example.com/checkout', blacklist), true);
+  assert.strictEqual(AllowlistUtils.isUrlBlacklisted('https://portal.internal.org/dashboard', blacklist), true);
+  assert.strictEqual(AllowlistUtils.isUrlBlacklisted('https://example.com/public', blacklist), false);
+
+  // Test Blacklist CRUD in StorageManager
+  await StorageManager.setBlacklist(['/api/secret']);
+  assert.strictEqual((await StorageManager.getBlacklist()).length, 1);
+  await StorageManager.addBlacklist('/admin/*');
+  assert.strictEqual((await StorageManager.getBlacklist()).length, 2);
+  await StorageManager.removeBlacklist('/api/secret');
+  assert.strictEqual((await StorageManager.getBlacklist()).length, 1);
+
+  // 14. Test Categories & Snippet Reordering
+  assert.strictEqual((await StorageManager.getCategories()).includes('General'), true);
+  await StorageManager.addCategory('Support');
+  assert.strictEqual((await StorageManager.getCategories()).includes('Support'), true);
+
+  const testSnip1 = await StorageManager.saveSnippet({
+    heading: 'First Snippet',
+    category: 'Support',
+    description: 'First description'
+  });
+  const testSnip2 = await StorageManager.saveSnippet({
+    heading: 'Second Snippet',
+    category: 'General',
+    description: 'Second description'
+  });
+
+  const reordered = await StorageManager.reorderSnippets([testSnip2.id, testSnip1.id]);
+  const retrievedSnippets = await StorageManager.getSnippets();
+  const idx2 = retrievedSnippets.findIndex(s => s.id === testSnip2.id);
+  const idx1 = retrievedSnippets.findIndex(s => s.id === testSnip1.id);
+  assert.strictEqual(idx2 < idx1, true, 'Second snippet should precede first snippet after reorder');
+
+  // 15. Test Shortcuts CRUD
+  const sc1 = await StorageManager.saveShortcut({ name: 'Copy', keys: 'Ctrl+C' });
+  assert.strictEqual((await StorageManager.getShortcuts()).length, 1);
+  assert.strictEqual((await StorageManager.getShortcuts())[0].name, 'Copy');
+  await StorageManager.deleteShortcut(sc1.id);
+  assert.strictEqual((await StorageManager.getShortcuts()).length, 0);
+
+  // Test Site Shortcuts state
+  assert.strictEqual(await StorageManager.getSiteShortcutsEnabled('example.com'), true);
+  await StorageManager.setSiteShortcutsEnabled('example.com', false);
+  assert.strictEqual(await StorageManager.getSiteShortcutsEnabled('example.com'), false);
+
+  // 16. Test Unwanted Headers Cleaner Matching
+  const unwantedHeaders = await StorageManager.getUnwantedHeaders();
+  assert.strictEqual(unwantedHeaders.includes('sec-fetch-*'), true);
+  assert.strictEqual(unwantedHeaders.includes('sec-ch-ua-*'), true);
+  assert.strictEqual(unwantedHeaders.includes('Accept-Language'), true);
+
+  function matchesHeader(line, pattern) {
+    const cleanPat = pattern.trim().toLowerCase().replace(/:$/, '');
+    const colonIdx = line.indexOf(':');
+    const headerName = (colonIdx !== -1 ? line.slice(0, colonIdx) : line).trim().toLowerCase();
+    if (cleanPat.endsWith('*')) {
+      return headerName.startsWith(cleanPat.slice(0, -1));
+    }
+    return headerName === cleanPat;
+  }
+
+  const rawHeaders = [
+    'Host: example.com',
+    'sec-fetch-dest: empty',
+    'sec-fetch-mode: cors',
+    'sec-ch-ua-mobile: ?0',
+    'X-pwnfox-color: red',
+    'Accept-Language: en-US,en;q=0.9',
+    'Upgrade-Insecure-Requests: 1',
+    'Priority: u=1',
+    'Accept-Encoding: gzip, deflate',
+    'Content-Type: application/json'
+  ];
+
+  const cleaned = rawHeaders.filter(line => !unwantedHeaders.some(pat => matchesHeader(line, pat)));
+  assert.strictEqual(cleaned.length, 2);
+  assert.strictEqual(cleaned[0], 'Host: example.com');
+  assert.strictEqual(cleaned[1], 'Content-Type: application/json');
+
+  // 17. Test Import & Export with Merge Mode
+  const exportPayload2 = await StorageManager.exportConfiguration();
+  assert.strictEqual(Array.isArray(exportPayload2.blacklist), true);
+  assert.strictEqual(Array.isArray(exportPayload2.shortcuts), true);
+  assert.strictEqual(Array.isArray(exportPayload2.unwanted_headers), true);
+
+  // Test merge mode
+  const mergeFile = JSON.stringify({
+    blacklist: ['/new-blacklisted-path'],
+    shortcuts: [{ id: 'sc-merged', name: 'Select All', keys: 'Ctrl+A' }]
+  });
+  await StorageManager.importConfiguration(mergeFile, 'merge');
+  assert.strictEqual((await StorageManager.getBlacklist()).includes('/new-blacklisted-path'), true);
+  assert.strictEqual((await StorageManager.getShortcuts()).some(s => s.name === 'Select All'), true);
+
   console.log('[PASS] ALL UNIT TESTS PASSED!');
 })();

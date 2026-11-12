@@ -15,6 +15,8 @@ const requiredIds = [
   'current-site-host',
   'toggle-current-site-btn',
   'toggle-current-site-label',
+  'toggle-blacklist-btn',
+  'toggle-blacklist-label',
   'active-site-switches',
   'toggle-site-replacer',
   'toggle-site-storage',
