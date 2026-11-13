@@ -1258,10 +1258,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (isHeaderLike) {
           const headerName = trimmed.slice(0, colonIdx).trim().toLowerCase();
           for (const pat of patterns) {
-            const cleanPat = pat.trim().toLowerCase();
+            const cleanPat = pat.trim().toLowerCase().replace(/:$/, '');
             if (cleanPat.endsWith('*')) {
               const prefix = cleanPat.slice(0, -1);
-              if (headerName.startsWith(prefix)) {
+              const prefixWithoutDash = prefix.endsWith('-') ? prefix.slice(0, -1) : prefix;
+              if (headerName.startsWith(prefix) || headerName === prefixWithoutDash) {
                 matched = true;
                 break;
               }
