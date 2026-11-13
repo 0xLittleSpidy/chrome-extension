@@ -161,6 +161,26 @@ async function runBrowserQA() {
     return res.result.value;
   }
 
+  async function captureScreenshot(ws, filePath) {
+    const shot = await sendCDP(ws, 'Page.captureScreenshot', { format: 'png' });
+    if (filePath) {
+      try {
+        fs.writeFileSync(filePath, Buffer.from(shot.data, 'base64'));
+      } catch (err) {
+        console.warn('[QA] Failed to write screenshot to', filePath, err.message);
+      }
+    }
+    return shot.data;
+  }
+
+  async function dispatchMouseClick(ws, x, y) {
+    await sendCDP(ws, 'Input.dispatchMouseEvent', { type: 'mouseMoved', x: Math.round(x), y: Math.round(y) });
+    await sendCDP(ws, 'Input.dispatchMouseEvent', { type: 'mousePressed', x: Math.round(x), y: Math.round(y), button: 'left', clickCount: 1 });
+    await sendCDP(ws, 'Input.dispatchMouseEvent', { type: 'mouseReleased', x: Math.round(x), y: Math.round(y), button: 'left', clickCount: 1 });
+  }
+
+  const ARTIFACT_DIR = '/home/littlespidy/.gemini/antigravity-cli/brain/f72bf1cf-cc59-47b0-b9e3-bd4cb8b576fe';
+
   // 3. Verify Helper content script injected and shadow root exists
   const hostCheck = await evalInPage(`Boolean(document.getElementById('is-highlighter-extension-root'))`);
   assert.strictEqual(hostCheck, true, 'Helper content script Shadow DOM root must be injected');
@@ -192,35 +212,50 @@ async function runBrowserQA() {
   console.log('[PASS] One-click replacement ("is" -> "was") executed accurately.');
 
   // 5. Verify Flying Toolbar appears ONLY on text selection and dismisses on outside click
-  console.log('[QA] Testing flying toolbar selection and outside dismissal behavior...');
+  console.log('[QA] Testing flying toolbar selection and outside dismissal with physical mouse interaction simulation...');
 
-  // Test 5a: Just clicking or focusing inside the textbox must NOT show the toolbar
-  const toolbarOnFocusOnly = await evalInPage(`
-    (async () => {
+  // Get physical bounding coordinates of textarea for mouse interaction
+  const taCoords = await evalInPage(`
+    (() => {
       const ta = document.getElementById('qa-textarea-transform');
-      ta.focus();
-      ta.selectionStart = 5;
-      ta.selectionEnd = 5; // Cursor only, no selection
-      ta.dispatchEvent(new Event('focus'));
-      document.dispatchEvent(new Event('selectionchange'));
-      await new Promise(r => setTimeout(r, 100));
-
-      const host = document.getElementById('is-highlighter-extension-root');
-      const toolbar = host.shadowRoot.querySelector('.helper-flying-toolbar');
-      return toolbar ? toolbar.style.display : 'none';
+      const r = ta.getBoundingClientRect();
+      return { x: r.left + 25, y: r.top + 25 };
     })()
   `);
-  assert.strictEqual(toolbarOnFocusOnly, 'none', 'Flying toolbar must NOT appear when cursor is placed without selection');
-  console.log('[PASS] Flying toolbar remains hidden when user simply clicks or focuses inside textbox.');
+
+  // Test 5a: Dispatch physical mouse click inside the textbox WITHOUT selecting text
+  await dispatchMouseClick(pageWs, taCoords.x, taCoords.y);
+  await new Promise(r => setTimeout(r, 200));
+
+  const toolbarOnFocusOnly = await evalInPage(`
+    (() => {
+      const host = document.getElementById('is-highlighter-extension-root');
+      if (!host || !host.shadowRoot) return { error: 'No shadow root' };
+      const toolbar = host.shadowRoot.querySelector('.helper-flying-toolbar');
+      if (!toolbar) return { computedDisplay: 'none', offsetWidth: 0, offsetHeight: 0, isVisibleClass: false };
+      return {
+        computedDisplay: window.getComputedStyle(toolbar).display,
+        offsetWidth: toolbar.offsetWidth,
+        offsetHeight: toolbar.offsetHeight,
+        isVisibleClass: toolbar.classList.contains('is-toolbar-visible')
+      };
+    })()
+  `);
+
+  assert.strictEqual(toolbarOnFocusOnly.computedDisplay, 'none', 'Flying toolbar computed display must be "none" when clicking without selection');
+  assert.strictEqual(toolbarOnFocusOnly.offsetWidth, 0, 'Flying toolbar offsetWidth must be 0 when unselected');
+  assert.strictEqual(toolbarOnFocusOnly.isVisibleClass, false, 'Toolbar must not have is-toolbar-visible class when unselected');
+  await captureScreenshot(pageWs, path.join(ARTIFACT_DIR, 'qa-toolbar-hidden-on-click.png'));
+  console.log('[PASS] Physical click in textbox confirms toolbar is completely hidden (computed display: none, width: 0).');
 
   // Test 5b: Selecting text must display the toolbar
   const toolbarAfterSelection = await evalInPage(`
     (async () => {
       const ta = document.getElementById('qa-textarea-transform');
       ta.focus();
-      ta.selectionStart = 0;
-      ta.selectionEnd = 12; // "Bearer token"
-      ta.dispatchEvent(new Event('select'));
+      ta.setSelectionRange(0, 12); // "Bearer token"
+      ta.dispatchEvent(new Event('select', { bubbles: true }));
+      ta.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
       document.dispatchEvent(new Event('selectionchange'));
       await new Promise(r => setTimeout(r, 200));
 
@@ -228,28 +263,43 @@ async function runBrowserQA() {
       const toolbar = host.shadowRoot.querySelector('.helper-flying-toolbar');
       const groups = Array.from(toolbar.querySelectorAll('.helper-toolbar-group-label')).map(l => l.textContent);
       return {
-        display: toolbar ? toolbar.style.display : 'none',
+        computedDisplay: window.getComputedStyle(toolbar).display,
+        offsetWidth: toolbar.offsetWidth,
+        offsetHeight: toolbar.offsetHeight,
+        isVisibleClass: toolbar.classList.contains('is-toolbar-visible'),
         groups
       };
     })()
   `);
-  assert.strictEqual(toolbarAfterSelection.display, 'flex', 'Flying toolbar must be displayed on text selection');
+  assert.strictEqual(toolbarAfterSelection.computedDisplay, 'flex', 'Flying toolbar must be computed display "flex" on text selection');
+  assert(toolbarAfterSelection.offsetWidth > 0, 'Flying toolbar must have non-zero width when visible');
+  assert.strictEqual(toolbarAfterSelection.isVisibleClass, true, 'Flying toolbar must have is-toolbar-visible class');
   assert.deepStrictEqual(toolbarAfterSelection.groups, ['Transform', 'Unwanted Headers'], 'Toolbar groups must follow order: Transform -> Shortcuts -> Unwanted Headers');
-  console.log('[PASS] Flying toolbar displays strictly on selection with correct group ordering.');
+  await captureScreenshot(pageWs, path.join(ARTIFACT_DIR, 'qa-toolbar-visible-on-selection.png'));
+  console.log('[PASS] Flying toolbar displays strictly on selection with computed display "flex" and correct group ordering.');
 
-  // Test 5c: Clicking outside must immediately dismiss the toolbar
+  // Test 5c: Physical click outside must immediately dismiss the toolbar
+  await dispatchMouseClick(pageWs, 10, 10);
+  await new Promise(r => setTimeout(r, 150));
+
   const toolbarAfterOutsideClick = await evalInPage(`
-    (async () => {
-      document.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true }));
-      await new Promise(r => setTimeout(r, 100));
-
+    (() => {
       const host = document.getElementById('is-highlighter-extension-root');
       const toolbar = host.shadowRoot.querySelector('.helper-flying-toolbar');
-      return toolbar ? toolbar.style.display : 'none';
+      if (!toolbar) return { computedDisplay: 'none', offsetWidth: 0, isVisibleClass: false };
+      return {
+        computedDisplay: window.getComputedStyle(toolbar).display,
+        offsetWidth: toolbar.offsetWidth,
+        offsetHeight: toolbar.offsetHeight,
+        isVisibleClass: toolbar.classList.contains('is-toolbar-visible')
+      };
     })()
   `);
-  assert.strictEqual(toolbarAfterOutsideClick, 'none', 'Flying toolbar must immediately hide upon outside click');
-  console.log('[PASS] Flying toolbar immediately dismissed when clicking outside.');
+  assert.strictEqual(toolbarAfterOutsideClick.computedDisplay, 'none', 'Flying toolbar must have computed display "none" upon outside click');
+  assert.strictEqual(toolbarAfterOutsideClick.offsetWidth, 0, 'Flying toolbar offsetWidth must be 0 after outside click');
+  assert.strictEqual(toolbarAfterOutsideClick.isVisibleClass, false, 'Toolbar must not have is-toolbar-visible class after outside click');
+  await captureScreenshot(pageWs, path.join(ARTIFACT_DIR, 'qa-toolbar-hidden-outside-click.png'));
+  console.log('[PASS] Physical click outside immediately dismisses flying toolbar (computed display: none, width: 0).');
 
   // 6. Test Red Color Redact preserving next line
   console.log('[QA] Testing Red Color Redact line scoping...');

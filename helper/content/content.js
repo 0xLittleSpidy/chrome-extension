@@ -128,6 +128,7 @@
     // Create unified Flying Toolbar (shown only when text is selected)
     flyingToolbar = document.createElement('div');
     flyingToolbar.className = 'helper-flying-toolbar';
+    flyingToolbar.classList.remove('is-toolbar-visible');
     flyingToolbar.style.display = 'none';
     shadowRoot.appendChild(flyingToolbar);
 
@@ -291,6 +292,7 @@
       return;
     }
 
+    flyingToolbar.classList.add('is-toolbar-visible');
     flyingToolbar.style.display = 'flex';
     const barRect = flyingToolbar.getBoundingClientRect();
 
@@ -334,6 +336,7 @@
    */
   function hideFlyingToolbar() {
     if (flyingToolbar) {
+      flyingToolbar.classList.remove('is-toolbar-visible');
       flyingToolbar.style.display = 'none';
     }
   }
@@ -1054,7 +1057,7 @@
     const onScroll = () => {
       syncScroll(element);
       if (activeFocusedElement === element) {
-        if (flyingToolbar && flyingToolbar.style.display !== 'none') {
+        if (flyingToolbar && flyingToolbar.classList.contains('is-toolbar-visible')) {
           showFlyingToolbar(element);
         }
       }

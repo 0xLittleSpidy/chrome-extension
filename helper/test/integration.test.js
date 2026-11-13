@@ -538,7 +538,8 @@ async function runTest() {
       if (!host || !host.shadowRoot) return { error: 'No shadow root' };
 
       const toolbar = host.shadowRoot.querySelector('.helper-flying-toolbar');
-      const hiddenWithoutSelection = !toolbar || toolbar.style.display === 'none';
+      const compStyleBefore = toolbar ? window.getComputedStyle(toolbar).display : 'none';
+      const hiddenWithoutSelection = !toolbar || (compStyleBefore === 'none' && !toolbar.classList.contains('is-toolbar-visible'));
 
       // Now select text
       ta.setSelectionRange(0, ta.value.length);
@@ -547,7 +548,8 @@ async function runTest() {
       document.dispatchEvent(new Event('selectionchange'));
 
       await new Promise(r => setTimeout(r, 200));
-      const visibleOnSelection = toolbar && toolbar.style.display !== 'none';
+      const compStyleAfter = toolbar ? window.getComputedStyle(toolbar).display : 'none';
+      const visibleOnSelection = toolbar && compStyleAfter === 'flex' && toolbar.classList.contains('is-toolbar-visible');
 
       const groups = Array.from(toolbar.querySelectorAll('.helper-toolbar-group-label')).map(l => l.textContent.trim());
 
