@@ -6,9 +6,10 @@ trigger: always_on
 
 ## Core Directive
 Whenever code, documentation, configuration, or any repository files are created, modified, refactored, or deleted:
-1. Always stage all modified and newly created files using `git add`.
-2. Commit the staged changes immediately with a clear, concise, and descriptive commit message that accurately reflects the modifications made.
-3. Push the commit immediately to the remote repository on the active working branch (e.g. `git push origin <branch>`).
+1. Always run the mandatory browser QA suite (`npm run qa` or `npm test`) with the live extension loaded in Chromium and ensure 100% pass before staging.
+2. Stage all modified and newly created files using `git add`.
+3. Commit the staged changes immediately with a clear, concise, and descriptive commit message that accurately reflects the modifications made.
+4. Push the commit immediately to the remote repository on the active working branch (e.g. `git push origin <branch>`).
 
 ## Execution Guidelines
 - Stage and commit all relevant changes once a modification or task step is complete.

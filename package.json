@@ -3,6 +3,7 @@
   "version": "2.0.0",
   "description": "Helper Chrome Extension workspace root",
   "scripts": {
+    "qa": "cd helper && npm run qa",
     "test": "cd helper && npm test",
     "test:unit": "cd helper && npm run test:unit",
     "test:popup": "cd helper && npm run test:popup",
