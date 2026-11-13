@@ -11,6 +11,9 @@ const CONTEXT_MENU_ROOT_ID = 'helper-saved-snippets-root';
 const CONTEXT_MENU_EMPTY_ID = 'helper-no-snippets';
 const CONTEXT_MENU_SNIPPET_PREFIX = 'helper-snip-';
 
+let isRebuildingContextMenus = false;
+let queuedRebuild = false;
+
 // Initialize storage defaults on installation
 chrome.runtime.onInstalled.addListener(async () => {
   await StorageManager.initializeDefaults();
@@ -21,101 +24,133 @@ chrome.runtime.onStartup.addListener(async () => {
   await rebuildContextMenus();
 });
 
-// Immediately initialize context menus at top level
-rebuildContextMenus();
+/**
+ * Safely creates a context menu item checking runtime.lastError to avoid uncaught warnings.
+ */
+function safeCreateMenu(options) {
+  return new Promise((resolve) => {
+    chrome.contextMenus.create(options, () => {
+      if (chrome.runtime.lastError) {
+        // Handled: reading lastError prevents "Unchecked runtime.lastError" warnings in Chrome
+      }
+      resolve();
+    });
+  });
+}
 
 /**
  * Rebuilds context menu items dynamically based on saved snippets.
+ * Serialized with an async mutex queue to prevent overlapping duplicate creations.
  */
 async function rebuildContextMenus() {
   if (!chrome.contextMenus) return;
 
-  chrome.contextMenus.removeAll(async () => {
-    try {
-      chrome.contextMenus.create({
-        id: CONTEXT_MENU_ROOT_ID,
-        title: 'Saved Snippets',
+  if (isRebuildingContextMenus) {
+    queuedRebuild = true;
+    return;
+  }
+  isRebuildingContextMenus = true;
+
+  try {
+    await new Promise((resolve) => {
+      chrome.contextMenus.removeAll(() => {
+        if (chrome.runtime.lastError) {
+          // Handled: reading lastError prevents "Unchecked runtime.lastError" warnings in Chrome
+        }
+        resolve();
+      });
+    });
+
+    await safeCreateMenu({
+      id: CONTEXT_MENU_ROOT_ID,
+      title: 'Saved Snippets',
+      contexts: ['all']
+    });
+
+    const snippets = await StorageManager.getSnippets();
+
+    if (!snippets || snippets.length === 0) {
+      await safeCreateMenu({
+        id: CONTEXT_MENU_EMPTY_ID,
+        parentId: CONTEXT_MENU_ROOT_ID,
+        title: 'No saved snippets (Click to open Settings)',
         contexts: ['all']
       });
+      return;
+    }
 
-      const snippets = await StorageManager.getSnippets();
+    // Group snippets by Category
+    const categoriesMap = new Map();
+    snippets.forEach(item => {
+      const cat = item.category || 'General';
+      if (!categoriesMap.has(cat)) {
+        categoriesMap.set(cat, []);
+      }
+      categoriesMap.get(cat).push(item);
+    });
 
-      if (!snippets || snippets.length === 0) {
-        chrome.contextMenus.create({
-          id: CONTEXT_MENU_EMPTY_ID,
+    const useCategorySubmenus = categoriesMap.size > 1;
+
+    for (const [catName, catSnippets] of categoriesMap.entries()) {
+      let parentMenuId = CONTEXT_MENU_ROOT_ID;
+
+      if (useCategorySubmenus) {
+        const catMenuId = `helper-cat-${catName.replace(/[^a-zA-Z0-9_-]/g, '_')}`;
+        await safeCreateMenu({
+          id: catMenuId,
           parentId: CONTEXT_MENU_ROOT_ID,
-          title: 'No saved snippets (Click to open Settings)',
+          title: catName,
           contexts: ['all']
         });
-        return;
+        parentMenuId = catMenuId;
       }
 
-      // Group snippets by Category
-      const categoriesMap = new Map();
-      snippets.forEach(item => {
-        const cat = item.category || 'General';
-        if (!categoriesMap.has(cat)) {
-          categoriesMap.set(cat, []);
-        }
-        categoriesMap.get(cat).push(item);
-      });
+      for (const item of catSnippets) {
+        const answers = Array.isArray(item.answers) && item.answers.length > 0
+          ? item.answers
+          : [item.description || ''];
 
-      const useCategorySubmenus = categoriesMap.size > 1;
-
-      for (const [catName, catSnippets] of categoriesMap.entries()) {
-        let parentMenuId = CONTEXT_MENU_ROOT_ID;
-
-        if (useCategorySubmenus) {
-          const catMenuId = `helper-cat-${catName.replace(/[^a-zA-Z0-9_-]/g, '_')}`;
-          chrome.contextMenus.create({
-            id: catMenuId,
-            parentId: CONTEXT_MENU_ROOT_ID,
-            title: catName,
+        if (answers.length > 1) {
+          // Parent menu for snippet with multiple answers
+          const snipParentId = `${CONTEXT_MENU_SNIPPET_PREFIX}${item.id}`;
+          await safeCreateMenu({
+            id: snipParentId,
+            parentId: parentMenuId,
+            title: `${item.heading || 'Untitled Snippet'} (${answers.length})`,
             contexts: ['all']
           });
-          parentMenuId = catMenuId;
-        }
 
-        catSnippets.forEach((item) => {
-          const answers = Array.isArray(item.answers) && item.answers.length > 0
-            ? item.answers
-            : [item.description || ''];
-
-          if (answers.length > 1) {
-            // Parent menu for snippet with multiple answers
-            const snipParentId = `${CONTEXT_MENU_SNIPPET_PREFIX}${item.id}`;
-            chrome.contextMenus.create({
-              id: snipParentId,
-              parentId: parentMenuId,
-              title: `${item.heading || 'Untitled Snippet'} (${answers.length})`,
-              contexts: ['all']
-            });
-
-            // Sub-menu for each answer
-            answers.forEach((answerText, idx) => {
-              const preview = answerText.replace(/\s+/g, ' ').trim().slice(0, 36);
-              chrome.contextMenus.create({
-                id: `${CONTEXT_MENU_SNIPPET_PREFIX}${item.id}_ans_${idx}`,
-                parentId: snipParentId,
-                title: `${idx + 1}. ${preview}${answerText.length > 36 ? '...' : ''}`,
-                contexts: ['all']
-              });
-            });
-          } else {
-            // Single answer item
-            chrome.contextMenus.create({
-              id: `${CONTEXT_MENU_SNIPPET_PREFIX}${item.id}`,
-              parentId: parentMenuId,
-              title: `${item.heading || 'Untitled Snippet'}`,
+          // Sub-menu for each answer
+          for (let idx = 0; idx < answers.length; idx++) {
+            const answerText = answers[idx];
+            const preview = answerText.replace(/\s+/g, ' ').trim().slice(0, 36);
+            await safeCreateMenu({
+              id: `${CONTEXT_MENU_SNIPPET_PREFIX}${item.id}_ans_${idx}`,
+              parentId: snipParentId,
+              title: `${idx + 1}. ${preview}${answerText.length > 36 ? '...' : ''}`,
               contexts: ['all']
             });
           }
-        });
+        } else {
+          // Single answer item
+          await safeCreateMenu({
+            id: `${CONTEXT_MENU_SNIPPET_PREFIX}${item.id}`,
+            parentId: parentMenuId,
+            title: `${item.heading || 'Untitled Snippet'}`,
+            contexts: ['all']
+          });
+        }
       }
-    } catch (err) {
-      console.warn('[Helper] Failed to rebuild context menus:', err);
     }
-  });
+  } catch (err) {
+    console.warn('[Helper] Failed to rebuild context menus:', err);
+  } finally {
+    isRebuildingContextMenus = false;
+    if (queuedRebuild) {
+      queuedRebuild = false;
+      rebuildContextMenus();
+    }
+  }
 }
 
 /**
