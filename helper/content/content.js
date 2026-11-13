@@ -174,14 +174,6 @@
   }
 
   /**
-   * Checks if text contains redacted or truncated tokens.
-   */
-  function hasRedactedTokens(text) {
-    if (!text || typeof text !== 'string') return false;
-    return /\[(?:redacted|truncated)\]/i.test(text);
-  }
-
-  /**
    * Rebuilds the unified flying toolbar containing Transform, Shortcuts, and Unwanted Headers.
    * Group order: Transform, Shortcuts, Unwanted Headers.
    */
@@ -1142,9 +1134,9 @@
 
     const text = getElementText(element);
     const scanResult = TextScanner.scanTextWithRules(text, activeRules);
-    const hasRedacted = hasRedactedTokens(text);
+    const hasRedEndpoints = Boolean(record.useRed && record.redTokens && record.redTokens.size > 0);
 
-    if (!scanResult.hasMatches && !hasRedacted) {
+    if (!scanResult.hasMatches && !hasRedEndpoints) {
       if (record.overlay) {
         record.overlay.style.display = 'none';
       }
@@ -1254,55 +1246,42 @@
       }
     }
 
-    // Redaction and Truncation matches
-    const tokenRegex = /(\[redacted\]|\[truncated\])/gi;
-    let match;
-    while ((match = tokenRegex.exec(text)) !== null) {
-      const tokenStart = match.index;
-      const tokenEnd = tokenStart + match[0].length;
+    // Red endpoint highlights for Red Color Redact
+    if (record && record.redTokens && record.redTokens.size > 0) {
+      const tokenRegex = /(\[redacted\]|\[truncated\])/gi;
+      let match;
+      while ((match = tokenRegex.exec(text)) !== null) {
+        const tokenStart = match.index;
+        const tokenEnd = tokenStart + match[0].length;
 
-      const isTokenRed = (record && record.redTokens) ? record.redTokens.has(tokenStart) : useRed;
-      if (isTokenRed) {
-        const first3Start = Math.max(0, tokenStart - 3);
-        const first3End = tokenStart;
-        if (first3End > first3Start) {
-          markers.push({
-            start: first3Start,
-            end: first3End,
-            type: 'endpoint-red',
-            text: text.substring(first3Start, first3End)
-          });
+        if (record.redTokens.has(tokenStart)) {
+          const first3Start = Math.max(0, tokenStart - 3);
+          const first3End = tokenStart;
+          if (first3End > first3Start) {
+            markers.push({
+              start: first3Start,
+              end: first3End,
+              type: 'endpoint-red',
+              text: text.substring(first3Start, first3End)
+            });
+          }
+
+          const last3Start = tokenEnd;
+          const last3End = Math.min(text.length, tokenEnd + 3);
+          if (last3End > last3Start) {
+            markers.push({
+              start: last3Start,
+              end: last3End,
+              type: 'endpoint-red',
+              text: text.substring(last3Start, last3End)
+            });
+          }
         }
-
-        markers.push({
-          start: tokenStart,
-          end: tokenEnd,
-          type: 'redacted-tag',
-          text: match[0]
-        });
-
-        const last3Start = tokenEnd;
-        const last3End = Math.min(text.length, tokenEnd + 3);
-        if (last3End > last3Start) {
-          markers.push({
-            start: last3Start,
-            end: last3End,
-            type: 'endpoint-red',
-            text: text.substring(last3Start, last3End)
-          });
-        }
-      } else {
-        markers.push({
-          start: tokenStart,
-          end: tokenEnd,
-          type: 'redacted-tag',
-          text: match[0]
-        });
       }
     }
 
     // Sort markers by start index
-    markers.sort((a, b) => a.start - b.start || (a.type === 'redacted-tag' ? -1 : 1));
+    markers.sort((a, b) => a.start - b.start);
 
     let currentIndex = 0;
     for (const marker of markers) {
@@ -1336,11 +1315,6 @@
           handleWordReplacement(element, marker.start, marker.end, marker.replacement);
         });
         fragment.appendChild(mark);
-      } else if (marker.type === 'redacted-tag') {
-        const b = document.createElement('b');
-        b.className = 'helper-redacted-tag';
-        b.appendChild(document.createTextNode(marker.text));
-        fragment.appendChild(b);
       } else if (marker.type === 'endpoint-red') {
         const span = document.createElement('span');
         span.className = 'helper-redacted-endpoint-red';
