@@ -27,6 +27,7 @@ A Chrome extension for dynamic text replacement, snippet clipboard storage, and 
    - **Saved Snippets**: Add, edit, test copy, and delete saved snippet items.
    - **Replacer Rules**: Add, edit, and delete dynamic replacement rules with whole-word and case-preservation options.
    - **Shortcuts & Header Cleaner**: Configure keyboard shortcuts and unwanted header patterns to strip from text.
+   - **Sidebar Import & Export**: One-click configuration backup and restore directly from the sidebar footer buttons.
 
 4. **Unified Flying Toolbar (Triggered on Text Selection)**:
    - Groups actions cleanly in strict order: Transform (Truncate, Redact, Red Color Truncate, Red Color Redact), Shortcuts, and Unwanted Headers.

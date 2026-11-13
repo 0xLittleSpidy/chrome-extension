@@ -13,6 +13,11 @@ document.addEventListener('DOMContentLoaded', async () => {
   const themeToggleBtn = document.getElementById('theme-toggle-btn');
   const themeToggleLabel = document.getElementById('theme-toggle-label');
 
+  // Sidebar Import/Export elements
+  const sidebarImportBtn = document.getElementById('sidebar-import-btn');
+  const sidebarExportBtn = document.getElementById('sidebar-export-btn');
+  const sidebarImportInput = document.getElementById('sidebar-import-input');
+
 
 
   // Whitelist elements
@@ -241,6 +246,59 @@ document.addEventListener('DOMContentLoaded', async () => {
         themeToggleLabel.textContent = `Theme: ${nextTheme === 'dark' ? 'Dark' : 'Light'}`;
       }
       showToast(`Switched to ${nextTheme} theme`);
+    });
+  }
+
+  // Sidebar Import / Export Handlers
+  if (sidebarImportBtn && sidebarImportInput) {
+    sidebarImportBtn.addEventListener('click', () => {
+      sidebarImportInput.click();
+    });
+
+    sidebarImportInput.addEventListener('change', (e) => {
+      const file = e.target.files && e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = async (event) => {
+        try {
+          const text = event.target.result;
+          await StorageManager.importConfiguration(text, 'replace');
+          showToast('Configuration successfully imported!');
+          sidebarImportInput.value = '';
+          await Promise.all([
+            renderWhitelist(),
+            renderBlacklist(),
+            renderSnippets(),
+            renderRules(),
+            renderShortcuts(),
+            renderHeaderCleaner()
+          ]);
+        } catch (err) {
+          showToast('Import failed: ' + err.message, 'error');
+        }
+      };
+      reader.readAsText(file);
+    });
+  }
+
+  if (sidebarExportBtn) {
+    sidebarExportBtn.addEventListener('click', async () => {
+      try {
+        const config = await StorageManager.exportConfiguration();
+        const jsonStr = JSON.stringify(config, null, 2);
+        const blob = new Blob([jsonStr], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `helper-backup-${new Date().toISOString().slice(0, 10)}.json`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        showToast('Configuration exported successfully');
+      } catch (err) {
+        showToast('Export failed: ' + err.message, 'error');
+      }
     });
   }
 

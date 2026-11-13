@@ -71,8 +71,11 @@ const requiredSettingsIds = [
   'header-cleaner-list',
   // Global
   'toast',
-  // Theme
+  // Theme & Sidebar Actions
   'theme-toggle-btn',
+  'sidebar-import-btn',
+  'sidebar-export-btn',
+  'sidebar-import-input',
   // Markdown & Multi-Answer
   'snippet-markdown-preview',
   'snippet-answers-nav',
