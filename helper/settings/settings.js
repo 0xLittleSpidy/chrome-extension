@@ -72,6 +72,11 @@ document.addEventListener('DOMContentLoaded', async () => {
   const headerCleanerList = document.getElementById('header-cleaner-list');
   const headerCleanerCount = document.getElementById('header-cleaner-count');
   const resetHeadersBtn = document.getElementById('reset-headers-btn');
+  const headerConsoleCount = document.getElementById('header-console-count');
+  const clearHeaderConsoleBtn = document.getElementById('clear-header-console-btn');
+  const consoleTestInput = document.getElementById('console-test-input');
+  const consoleTestCleanBtn = document.getElementById('console-test-clean-btn');
+  const headerConsoleTerminal = document.getElementById('header-console-terminal');
 
   // Rule elements
   const ruleForm = document.getElementById('rule-form');
@@ -1175,6 +1180,126 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   }
 
+  // --- Deleted Headers Console Log ---
+  async function renderHeaderConsole() {
+    if (!headerConsoleTerminal) return;
+    const logs = await StorageManager.getDeletedHeadersLog();
+    if (headerConsoleCount) {
+      headerConsoleCount.textContent = `${logs.length} ${logs.length === 1 ? 'entry' : 'entries'}`;
+    }
+
+    headerConsoleTerminal.innerHTML = '';
+    if (!Array.isArray(logs) || logs.length === 0) {
+      const empty = document.createElement('div');
+      empty.className = 'console-empty';
+      empty.textContent = 'System ready. No deleted headers recorded yet. Click Remove Unwanted Headers on any web page or use the test box above to see real-time deletion logs.';
+      headerConsoleTerminal.appendChild(empty);
+      return;
+    }
+
+    logs.forEach(entry => {
+      const entryDiv = document.createElement('div');
+      entryDiv.className = 'console-entry';
+
+      const headerDiv = document.createElement('div');
+      headerDiv.className = 'console-entry-header';
+
+      const sourceSpan = document.createElement('span');
+      sourceSpan.textContent = `[${entry.source || 'Web Page'}] ${entry.count || (entry.headers ? entry.headers.length : 0)} header(s) deleted:`;
+
+      const timeSpan = document.createElement('span');
+      timeSpan.className = 'console-entry-time';
+      timeSpan.textContent = entry.timestamp || '';
+
+      headerDiv.appendChild(sourceSpan);
+      headerDiv.appendChild(timeSpan);
+      entryDiv.appendChild(headerDiv);
+
+      if (Array.isArray(entry.headers)) {
+        entry.headers.forEach(h => {
+          const lineDiv = document.createElement('div');
+          lineDiv.className = 'console-entry-line';
+          lineDiv.textContent = h;
+          entryDiv.appendChild(lineDiv);
+        });
+      }
+
+      headerConsoleTerminal.appendChild(entryDiv);
+    });
+  }
+
+  if (clearHeaderConsoleBtn) {
+    clearHeaderConsoleBtn.addEventListener('click', async () => {
+      await StorageManager.clearDeletedHeadersLog();
+      showToast('Cleared deleted headers console');
+      renderHeaderConsole();
+    });
+  }
+
+  if (consoleTestCleanBtn && consoleTestInput) {
+    consoleTestCleanBtn.addEventListener('click', async () => {
+      const text = consoleTestInput.value;
+      if (!text || !text.trim()) {
+        showToast('Please paste headers to test', 'error');
+        return;
+      }
+      const patterns = await StorageManager.getUnwantedHeaders();
+      const lines = text.split(/\r?\n/);
+      let removedCount = 0;
+      const removedLines = [];
+      const remainingLines = [];
+
+      for (const line of lines) {
+        const trimmed = line.trim();
+        const colonIdx = trimmed.indexOf(':');
+        const isHeaderLike = colonIdx > 0 && !trimmed.startsWith('#') && !trimmed.startsWith('```');
+        let matched = false;
+
+        if (isHeaderLike) {
+          const headerName = trimmed.slice(0, colonIdx).trim().toLowerCase();
+          for (const pat of patterns) {
+            const cleanPat = pat.trim().toLowerCase();
+            if (cleanPat.endsWith('*')) {
+              const prefix = cleanPat.slice(0, -1);
+              if (headerName.startsWith(prefix)) {
+                matched = true;
+                break;
+              }
+            } else if (headerName === cleanPat) {
+              matched = true;
+              break;
+            }
+          }
+        }
+
+        if (matched) {
+          removedCount++;
+          removedLines.push(trimmed);
+        } else {
+          remainingLines.push(line);
+        }
+      }
+
+      if (removedCount > 0) {
+        consoleTestInput.value = remainingLines.join('\n');
+        const now = new Date();
+        const timeStr = now.toLocaleTimeString([], { hour12: false });
+        const dateStr = now.toISOString().slice(0, 10);
+        await StorageManager.addDeletedHeadersLog({
+          id: 'test-clean-' + Date.now(),
+          timestamp: `${dateStr} ${timeStr}`,
+          source: 'Interactive Test Cleaner',
+          headers: removedLines,
+          count: removedCount
+        });
+        showToast(`Removed ${removedCount} header line${removedCount === 1 ? '' : 's'}`);
+        renderHeaderConsole();
+      } else {
+        showToast('No matching unwanted headers found');
+      }
+    });
+  }
+
   // Listen for storage changes from other views
   chrome.storage.onChanged.addListener(() => {
     renderWhitelist();
@@ -1183,6 +1308,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     renderRules();
     renderShortcuts();
     renderHeaderCleaner();
+    renderHeaderConsole();
   });
 
   // Initialize Theme, Answer Tabs, and Data
@@ -1195,6 +1321,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     renderSnippets(),
     renderRules(),
     renderShortcuts(),
-    renderHeaderCleaner()
+    renderHeaderCleaner(),
+    renderHeaderConsole()
   ]);
 });

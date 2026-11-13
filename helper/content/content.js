@@ -347,6 +347,11 @@
       hideFlyingToolbar();
       return;
     }
+    // Must be the actively focused element or contain the activeElement
+    if (document.activeElement !== element && !element.contains(document.activeElement)) {
+      hideFlyingToolbar();
+      return;
+    }
     const selectedText = getSelectedText(element);
     if (!selectedText || selectedText.trim().length === 0) {
       hideFlyingToolbar();
@@ -397,10 +402,41 @@
   }
 
   /**
+   * Logs deleted headers into extension storage for the Deleted Headers Console.
+   */
+  async function logDeletedHeaders(removedLines, source) {
+    if (!removedLines || removedLines.length === 0) return;
+    try {
+      const now = new Date();
+      const timeStr = now.toLocaleTimeString([], { hour12: false });
+      const dateStr = now.toISOString().slice(0, 10);
+      const entry = {
+        id: 'clean-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6),
+        timestamp: `${dateStr} ${timeStr}`,
+        source: source || window.location.hostname || 'Web Page',
+        headers: removedLines,
+        count: removedLines.length
+      };
+
+      if (typeof StorageManager !== 'undefined' && StorageManager.addDeletedHeadersLog) {
+        await StorageManager.addDeletedHeadersLog(entry);
+      } else if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+        const data = await chrome.storage.local.get(['deleted_headers_log']);
+        const current = Array.isArray(data.deleted_headers_log) ? data.deleted_headers_log : [];
+        const updated = [entry, ...current].slice(0, 100);
+        await chrome.storage.local.set({ deleted_headers_log: updated });
+      }
+    } catch (err) {
+      console.warn('[Helper] Failed to log deleted headers:', err);
+    }
+  }
+
+  /**
    * Removes unwanted header lines from a contentEditable element without destroying its Markdown/DOM structure.
    */
   function removeUnwantedHeadersFromDOM(root, patterns) {
     let removedCount = 0;
+    const removedLines = [];
     const allTextNodes = getTextNodesUnder(root);
 
     for (const tn of allTextNodes) {
@@ -413,6 +449,7 @@
         for (const line of lines) {
           if (patterns.some(pat => matchesHeaderPattern(line, pat))) {
             removedCount++;
+            removedLines.push(line.trim());
           } else {
             filtered.push(line);
           }
@@ -424,6 +461,7 @@
         const line = val.trim();
         if (patterns.some(pat => matchesHeaderPattern(line, pat))) {
           removedCount++;
+          removedLines.push(line);
           const parent = tn.parentElement;
           if (parent && parent !== root && parent.childNodes.length === 1 && (parent.tagName === 'DIV' || parent.tagName === 'P' || parent.tagName === 'LI')) {
             parent.remove();
@@ -434,7 +472,7 @@
       }
     }
 
-    return removedCount;
+    return { count: removedCount, lines: removedLines };
   }
 
   /**
@@ -456,8 +494,9 @@
         ];
 
     if (element.isContentEditable) {
-      const removedCount = removeUnwantedHeadersFromDOM(element, patterns);
+      const { count: removedCount, lines: removedLines } = removeUnwantedHeadersFromDOM(element, patterns);
       if (removedCount > 0) {
+        logDeletedHeaders(removedLines, window.location.hostname || window.location.href);
         element.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
         element.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
         updateOverlayForElement(element);
@@ -471,13 +510,18 @@
     const currentText = getElementText(element);
     const lines = currentText.split(/\r?\n/);
     let removedCount = 0;
+    const removedLines = [];
     const filteredLines = lines.filter(line => {
       const isUnwanted = patterns.some(pat => matchesHeaderPattern(line, pat));
-      if (isUnwanted) removedCount++;
+      if (isUnwanted) {
+        removedCount++;
+        removedLines.push(line.trim());
+      }
       return !isUnwanted;
     });
 
     if (removedCount > 0) {
+      logDeletedHeaders(removedLines, window.location.hostname || window.location.href);
       const newText = filteredLines.join('\n');
       setNativeValue(element, newText);
       element.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
@@ -565,15 +609,39 @@
 
   /**
    * Gets selected text from element or window selection.
+   * Strictly returns non-empty string only when text is actively selected.
    */
   function getSelectedText(element) {
-    if (element && (element.tagName === 'TEXTAREA' || element.tagName === 'INPUT')) {
-      if (typeof element.selectionStart === 'number' && typeof element.selectionEnd === 'number') {
-        return element.value.substring(element.selectionStart, element.selectionEnd);
-      }
+    if (!element) return '';
+
+    // Must be focused on the element
+    if (document.activeElement !== element && !element.contains(document.activeElement)) {
+      return '';
     }
-    const sel = window.getSelection();
-    return sel ? sel.toString() : '';
+
+    if (element.tagName === 'TEXTAREA' || element.tagName === 'INPUT') {
+      const start = element.selectionStart;
+      const end = element.selectionEnd;
+      if (typeof start === 'number' && typeof end === 'number' && end > start) {
+        const text = element.value.substring(start, end);
+        return text.trim().length > 0 ? text : '';
+      }
+      return '';
+    }
+
+    if (element.isContentEditable || element.getAttribute('contenteditable') === 'true') {
+      const sel = window.getSelection();
+      if (sel && !sel.isCollapsed && sel.rangeCount > 0) {
+        const anchorNode = sel.anchorNode;
+        if (anchorNode && element.contains(anchorNode)) {
+          const text = sel.toString();
+          return text.trim().length > 0 ? text : '';
+        }
+      }
+      return '';
+    }
+
+    return '';
   }
 
   /**
@@ -801,14 +869,23 @@
     document.addEventListener('change', handleGlobalInputEvent, { capture: true, passive: true });
     document.addEventListener('focusin', handleGlobalInputEvent, { capture: true, passive: true });
     document.addEventListener('selectionchange', handleGlobalSelectionChange, { passive: true });
+    document.addEventListener('pointerdown', handleGlobalPointerDown, true);
     document.addEventListener('contextmenu', handleGlobalContextMenu, true);
   }
 
+  function handleGlobalPointerDown(e) {
+    if (!flyingToolbar || flyingToolbar.style.display === 'none') return;
+    if (hostElement && hostElement.contains(e.target)) return;
+    hideFlyingToolbar();
+  }
+
   function handleGlobalSelectionChange() {
-    const el = activeFocusedElement || document.activeElement;
+    const el = document.activeElement;
     if (el && isValidTextField(el)) {
+      activeFocusedElement = el;
       checkAndShowFlyingToolbar(el);
     } else {
+      activeFocusedElement = null;
       hideFlyingToolbar();
     }
   }
@@ -839,6 +916,7 @@
     document.removeEventListener('change', handleGlobalInputEvent, true);
     document.removeEventListener('focusin', handleGlobalInputEvent, true);
     document.removeEventListener('selectionchange', handleGlobalSelectionChange);
+    document.removeEventListener('pointerdown', handleGlobalPointerDown, true);
     document.removeEventListener('contextmenu', handleGlobalContextMenu, true);
 
     // Remove all overlays
@@ -994,11 +1072,10 @@
     };
 
     const onBlur = () => {
-      setTimeout(() => {
-        if (activeFocusedElement === element && document.activeElement !== element) {
-          hideFlyingToolbar();
-        }
-      }, 250);
+      hideFlyingToolbar();
+      if (activeFocusedElement === element) {
+        activeFocusedElement = null;
+      }
     };
 
     element.addEventListener('input', onUpdate);
@@ -1006,7 +1083,6 @@
     element.addEventListener('change', onUpdate);
     element.addEventListener('paste', onUpdate);
     element.addEventListener('focus', onFocus);
-    element.addEventListener('click', onFocus);
     element.addEventListener('mouseup', onSelectionChange);
     element.addEventListener('select', onSelectionChange);
     element.addEventListener('blur', onBlur);
@@ -1065,7 +1141,6 @@
     element.removeEventListener('paste', record.onUpdate);
     if (record.onFocus) {
       element.removeEventListener('focus', record.onFocus);
-      element.removeEventListener('click', record.onFocus);
     }
     if (record.onSelectionChange) {
       element.removeEventListener('mouseup', record.onSelectionChange);

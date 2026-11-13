@@ -23,7 +23,8 @@
     UNWANTED_HEADERS: 'unwanted_headers',
     REPLACER_RULES: 'replacer_rules',
     STORAGE_FILE_CONFIGURED: 'storage_file_configured',
-    THEME: 'theme'
+    THEME: 'theme',
+    DELETED_HEADERS_LOG: 'deleted_headers_log'
   };
 
   const DEFAULT_CATEGORIES = ['General'];
@@ -404,6 +405,45 @@
     const updated = list.filter(p => p.toLowerCase() !== clean.toLowerCase());
     await setUnwantedHeaders(updated);
     return updated;
+  }
+
+  // --- Deleted Headers Console Log API ---
+  async function getDeletedHeadersLog() {
+    try {
+      if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+        const data = await chrome.storage.local.get([STORAGE_KEYS.DELETED_HEADERS_LOG]);
+        return Array.isArray(data[STORAGE_KEYS.DELETED_HEADERS_LOG]) ? data[STORAGE_KEYS.DELETED_HEADERS_LOG] : [];
+      }
+    } catch (e) {
+      console.warn('Failed to get deleted headers log:', e);
+    }
+    return [];
+  }
+
+  async function addDeletedHeadersLog(entry) {
+    if (!entry || !entry.headers || entry.headers.length === 0) return [];
+    try {
+      if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+        const current = await getDeletedHeadersLog();
+        const updated = [entry, ...current].slice(0, 100);
+        await chrome.storage.local.set({ [STORAGE_KEYS.DELETED_HEADERS_LOG]: updated });
+        return updated;
+      }
+    } catch (e) {
+      console.warn('Failed to add deleted headers log:', e);
+    }
+    return [];
+  }
+
+  async function clearDeletedHeadersLog() {
+    try {
+      if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+        await chrome.storage.local.set({ [STORAGE_KEYS.DELETED_HEADERS_LOG]: [] });
+      }
+    } catch (e) {
+      console.warn('Failed to clear deleted headers log:', e);
+    }
+    return [];
   }
 
   // --- Per-Site Replacer Switch API ---
@@ -820,6 +860,9 @@
     setUnwantedHeaders: setUnwantedHeaders,
     addUnwantedHeader: addUnwantedHeader,
     deleteUnwantedHeader: deleteUnwantedHeader,
+    getDeletedHeadersLog: getDeletedHeadersLog,
+    addDeletedHeadersLog: addDeletedHeadersLog,
+    clearDeletedHeadersLog: clearDeletedHeadersLog,
     getSiteReplacerEnabled: getSiteReplacerEnabled,
     setSiteReplacerEnabled: setSiteReplacerEnabled,
     getSiteStorageEnabled: getSiteStorageEnabled,

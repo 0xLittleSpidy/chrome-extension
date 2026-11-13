@@ -69,6 +69,11 @@ const requiredSettingsIds = [
   'header-pattern-input',
   'reset-headers-btn',
   'header-cleaner-list',
+  'header-console-count',
+  'clear-header-console-btn',
+  'console-test-input',
+  'console-test-clean-btn',
+  'header-console-terminal',
   // Global
   'toast',
   // Theme & Sidebar Actions

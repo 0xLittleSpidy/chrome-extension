@@ -191,18 +191,29 @@ async function runBrowserQA() {
   assert(wordReplaceResult.val.startsWith('This was a primary test sentence.'), 'Clicking highlight must replace "is" with "was"');
   console.log('[PASS] One-click replacement ("is" -> "was") executed accurately.');
 
-  // 5. Verify Flying Toolbar appears ONLY on text selection
-  console.log('[QA] Testing flying toolbar selection behavior...');
-  const toolbarBeforeSelection = await evalInPage(`
-    (() => {
+  // 5. Verify Flying Toolbar appears ONLY on text selection and dismisses on outside click
+  console.log('[QA] Testing flying toolbar selection and outside dismissal behavior...');
+
+  // Test 5a: Just clicking or focusing inside the textbox must NOT show the toolbar
+  const toolbarOnFocusOnly = await evalInPage(`
+    (async () => {
+      const ta = document.getElementById('qa-textarea-transform');
+      ta.focus();
+      ta.selectionStart = 5;
+      ta.selectionEnd = 5; // Cursor only, no selection
+      ta.dispatchEvent(new Event('focus'));
+      document.dispatchEvent(new Event('selectionchange'));
+      await new Promise(r => setTimeout(r, 100));
+
       const host = document.getElementById('is-highlighter-extension-root');
       const toolbar = host.shadowRoot.querySelector('.helper-flying-toolbar');
       return toolbar ? toolbar.style.display : 'none';
     })()
   `);
-  assert.strictEqual(toolbarBeforeSelection, 'none', 'Flying toolbar must be hidden when no text is selected');
+  assert.strictEqual(toolbarOnFocusOnly, 'none', 'Flying toolbar must NOT appear when cursor is placed without selection');
+  console.log('[PASS] Flying toolbar remains hidden when user simply clicks or focuses inside textbox.');
 
-  // Select text in qa-textarea-transform
+  // Test 5b: Selecting text must display the toolbar
   const toolbarAfterSelection = await evalInPage(`
     (async () => {
       const ta = document.getElementById('qa-textarea-transform');
@@ -225,6 +236,20 @@ async function runBrowserQA() {
   assert.strictEqual(toolbarAfterSelection.display, 'flex', 'Flying toolbar must be displayed on text selection');
   assert.deepStrictEqual(toolbarAfterSelection.groups, ['Transform', 'Unwanted Headers'], 'Toolbar groups must follow order: Transform -> Shortcuts -> Unwanted Headers');
   console.log('[PASS] Flying toolbar displays strictly on selection with correct group ordering.');
+
+  // Test 5c: Clicking outside must immediately dismiss the toolbar
+  const toolbarAfterOutsideClick = await evalInPage(`
+    (async () => {
+      document.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true }));
+      await new Promise(r => setTimeout(r, 100));
+
+      const host = document.getElementById('is-highlighter-extension-root');
+      const toolbar = host.shadowRoot.querySelector('.helper-flying-toolbar');
+      return toolbar ? toolbar.style.display : 'none';
+    })()
+  `);
+  assert.strictEqual(toolbarAfterOutsideClick, 'none', 'Flying toolbar must immediately hide upon outside click');
+  console.log('[PASS] Flying toolbar immediately dismissed when clicking outside.');
 
   // 6. Test Red Color Redact preserving next line
   console.log('[QA] Testing Red Color Redact line scoping...');
@@ -319,6 +344,47 @@ async function runBrowserQA() {
   assert.strictEqual(storageBannerAbsent, true, 'Storage setup banner must be absent');
 
   console.log('[PASS] Settings page: default dark theme, import/export buttons, and clean sidebar verified.');
+
+  // Test Header Cleaner Console & Interactive Test Cleaner
+  console.log('[QA] Testing Header Cleaner Console and Interactive Test Cleaner...');
+  const headerConsoleTest = await evalInSettings(`
+    (async () => {
+      document.getElementById('nav-header-cleaner').click();
+      await new Promise(r => setTimeout(r, 200));
+
+      const terminal = document.getElementById('header-console-terminal');
+      const testInput = document.getElementById('console-test-input');
+      const testBtn = document.getElementById('console-test-clean-btn');
+      const clearBtn = document.getElementById('clear-header-console-btn');
+
+      if (!terminal || !testInput || !testBtn || !clearBtn) {
+        return { error: 'Console elements missing' };
+      }
+
+      // Enter test headers and click test clean
+      testInput.value = 'sec-fetch-mode: cors\\nAccept-Encoding: gzip\\nContent-Type: text/plain';
+      testBtn.click();
+      await new Promise(r => setTimeout(r, 200));
+
+      const entryCount = terminal.querySelectorAll('.console-entry').length;
+      const entryText = terminal.innerText;
+
+      // Click clear
+      clearBtn.click();
+      await new Promise(r => setTimeout(r, 200));
+      const afterClearCount = terminal.querySelectorAll('.console-entry').length;
+
+      return {
+        entryCount,
+        entryText,
+        afterClearCount
+      };
+    })()
+  `);
+  assert(headerConsoleTest.entryCount > 0, 'Header console must record deleted headers entry');
+  assert(headerConsoleTest.entryText.includes('sec-fetch-mode'), 'Console log must list deleted sec-fetch-mode header');
+  assert.strictEqual(headerConsoleTest.afterClearCount, 0, 'Clear console button must reset terminal entries to 0');
+  console.log('[PASS] Header Cleaner Console, interactive testing, and clear function verified.');
 
   // 9. Zero-Emoji Compliance Check
   console.log('[QA] Testing Zero-Emoji compliance across pages...');

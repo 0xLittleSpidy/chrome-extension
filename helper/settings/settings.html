@@ -410,6 +410,31 @@
             <!-- Dynamically populated -->
           </div>
         </div>
+
+        <div class="card">
+          <div class="card-header-flex">
+            <div>
+              <h3 class="card-title">Deleted Headers Console</h3>
+              <p class="section-desc" style="margin: 0; font-size: 13px;">Real-time log of headers stripped by the extension across active tabs and the test sandbox.</p>
+            </div>
+            <div style="display: flex; gap: 8px; align-items: center;">
+              <span id="header-console-count" class="badge">0 entries</span>
+              <button type="button" id="clear-header-console-btn" class="btn btn-secondary btn-sm">Clear Console</button>
+            </div>
+          </div>
+
+          <div style="margin-top: 14px; margin-bottom: 12px;">
+            <label style="display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px; color: var(--text-secondary);">Test Header Cleaner:</label>
+            <div style="display: flex; gap: 8px;">
+              <textarea id="console-test-input" class="form-input" placeholder="Paste sample headers here to test cleaner and see real-time deletion logs..." style="min-height: 75px; font-family: ui-monospace, monospace; font-size: 12px; resize: vertical;"></textarea>
+              <button type="button" id="console-test-clean-btn" class="btn btn-primary" style="align-self: flex-start; white-space: nowrap;">Test Clean</button>
+            </div>
+          </div>
+
+          <div id="header-console-terminal" class="console-terminal-view">
+            <!-- Dynamically populated terminal log entries -->
+          </div>
+        </div>
       </section>
     </main>
   </div>

@@ -920,3 +920,65 @@ body {
   border-color: var(--danger);
   color: var(--danger);
 }
+
+/* Deleted Headers Terminal Console */
+.console-terminal-view {
+  background-color: #0b0f19;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+  max-height: 280px;
+  overflow-y: auto;
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+
+.console-entry {
+  margin-bottom: 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px dashed var(--border);
+}
+
+.console-entry:last-child {
+  margin-bottom: 0;
+  padding-bottom: 0;
+  border-bottom: none;
+}
+
+.console-entry-header {
+  color: #38bdf8;
+  font-weight: 600;
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 6px;
+  font-size: 12px;
+}
+
+.console-entry-time {
+  color: #64748b;
+  font-size: 11px;
+}
+
+.console-entry-line {
+  color: #ef4444;
+  padding-left: 14px;
+  position: relative;
+  word-break: break-all;
+}
+
+.console-entry-line::before {
+  content: "-";
+  position: absolute;
+  left: 2px;
+  color: #ef4444;
+  font-weight: bold;
+}
+
+.console-empty {
+  color: #64748b;
+  font-style: italic;
+  padding: 20px 0;
+  text-align: center;
+}
