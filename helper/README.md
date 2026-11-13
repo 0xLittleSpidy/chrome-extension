@@ -26,9 +26,13 @@ A Chrome extension for dynamic text replacement, snippet clipboard storage, and 
    - **Whitelist Management**: Add and delete permitted website domains.
    - **Saved Snippets**: Add, edit, test copy, and delete saved snippet items.
    - **Replacer Rules**: Add, edit, and delete dynamic replacement rules with whole-word and case-preservation options.
-   - **Import & Export**: Backup or restore configuration to/from a single portable JSON file (`helper-backup.json`) to easily transfer settings between machines or users.
+   - **Shortcuts & Header Cleaner**: Configure keyboard shortcuts and unwanted header patterns to strip from text.
 
-4. **Per-Site Replacer and Storage Switches in Popup**:
+4. **Unified Flying Toolbar (Triggered on Text Selection)**:
+   - Groups actions cleanly in strict order: Transform (Truncate, Redact, Red Color Truncate, Red Color Redact), Shortcuts, and Unwanted Headers.
+   - Strips unwanted headers safely while preserving Markdown, code blocks, and document formatting.
+
+5. **Per-Site Replacer and Storage Switches in Popup**:
    - Whitelist status: Allow or remove current domain.
    - **Replacer Switch**: Temporarily pause or resume text replacement on a whitelisted site without deleting it from the whitelist.
    - **Storage Switch**: Temporarily pause or resume snippet and storage integration on a specific site.
@@ -58,9 +62,9 @@ chrome_extension/
 │   ├── offscreen.html         # Offscreen document for clipboard operations
 │   └── offscreen.js           # Clipboard writer implementation
 ├── settings/
-│   ├── settings.html          # Configuration center (Whitelist, Snippets, Rules, Import/Export)
+│   ├── settings.html          # Configuration center (Whitelist, Snippets, Rules, Cleaner)
 │   ├── settings.css           # Styling for settings hub
-│   └── settings.js            # Controller for CRUD operations & file export/import
+│   └── settings.js            # Controller for CRUD operations & rule management
 ├── popup/
 │   ├── popup.html             # Popup user interface with active-site switches
 │   ├── popup.css              # Styling for popup

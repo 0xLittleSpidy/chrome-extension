@@ -19,8 +19,6 @@
   let shadowRoot = null;
   let hostElement = null;
   let floatingTooltip = null;
-  let headerFloatingBar = null;
-  let selectionFloatingBar = null;
   let flyingToolbar = null;
   let activeFocusedElement = null;
   let lastContextMenuTarget = null;
@@ -127,82 +125,7 @@
     floatingTooltip.style.display = 'none';
     shadowRoot.appendChild(floatingTooltip);
 
-    // Create shared floating bar for Cookie and Authorization headers
-    headerFloatingBar = document.createElement('div');
-    headerFloatingBar.className = 'helper-header-floating-bar';
-    headerFloatingBar.style.display = 'none';
-
-    const barLabel = document.createElement('span');
-    barLabel.className = 'helper-bar-label';
-    barLabel.textContent = 'Headers';
-    headerFloatingBar.appendChild(barLabel);
-
-    const btnContainer = document.createElement('div');
-    btnContainer.className = 'helper-bar-buttons';
-
-    const buttonsConfig = [
-      { text: 'Truncate', action: 'truncate', isRed: false },
-      { text: 'Redact', action: 'redact', isRed: false },
-      { text: 'Red Color Truncate', action: 'red-color-truncate', isRed: true },
-      { text: 'Red Color Redact', action: 'red-color-redact', isRed: true }
-    ];
-
-    buttonsConfig.forEach(cfg => {
-      const btn = document.createElement('button');
-      btn.type = 'button';
-      btn.className = 'helper-bar-btn' + (cfg.isRed ? ' helper-bar-btn-red' : '');
-      btn.textContent = cfg.text;
-      btn.dataset.action = cfg.action;
-      btn.addEventListener('mousedown', (e) => {
-        e.preventDefault();
-      });
-      btn.addEventListener('click', (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        if (activeFocusedElement) {
-          handleHeaderAction(activeFocusedElement, cfg.action);
-        }
-      });
-      btnContainer.appendChild(btn);
-    });
-
-    headerFloatingBar.appendChild(btnContainer);
-    shadowRoot.appendChild(headerFloatingBar);
-
-    // Create shared Universal Selection Transformations Bar
-    selectionFloatingBar = document.createElement('div');
-    selectionFloatingBar.className = 'helper-selection-floating-bar';
-    selectionFloatingBar.style.display = 'none';
-
-    const selBarLabel = document.createElement('span');
-    selBarLabel.className = 'helper-bar-label';
-    selBarLabel.textContent = 'Transform';
-    selectionFloatingBar.appendChild(selBarLabel);
-
-    const selBtnContainer = document.createElement('div');
-    selBtnContainer.className = 'helper-bar-buttons';
-
-    buttonsConfig.forEach(cfg => {
-      const btn = document.createElement('button');
-      btn.type = 'button';
-      btn.className = 'helper-bar-btn' + (cfg.isRed ? ' helper-bar-btn-red' : '');
-      btn.textContent = cfg.text;
-      btn.dataset.action = cfg.action;
-      btn.addEventListener('mousedown', (e) => {
-        e.preventDefault();
-      });
-      btn.addEventListener('click', (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        handleSelectionTransformation(cfg.action);
-      });
-      selBtnContainer.appendChild(btn);
-    });
-
-    selectionFloatingBar.appendChild(selBtnContainer);
-    shadowRoot.appendChild(selectionFloatingBar);
-
-    // Create shared Flying Toolbar for textboxes
+    // Create unified Flying Toolbar (shown only when text is selected)
     flyingToolbar = document.createElement('div');
     flyingToolbar.className = 'helper-flying-toolbar';
     flyingToolbar.style.display = 'none';
@@ -251,14 +174,6 @@
   }
 
   /**
-   * Checks if text contains sensitive headers (Cookie or Authorization).
-   */
-  function hasSensitiveHeaders(text) {
-    if (!text || typeof text !== 'string') return false;
-    return /\b(cookie|authorization)\s*:/i.test(text);
-  }
-
-  /**
    * Checks if text contains redacted or truncated tokens.
    */
   function hasRedactedTokens(text) {
@@ -267,155 +182,62 @@
   }
 
   /**
-   * Transforms headers by preserving first 3 and last 3 characters of secrets.
-   */
-  function transformHeaders(fullText, mode) {
-    const tag = (mode === 'truncate') ? '[truncated]' : '[redacted]';
-
-    // Cookie headers: cookie:\s*([^\r\n]+)
-    let transformed = fullText.replace(/(cookie\s*:\s*)([^\r\n]+)/gi, (match, prefix, cookiesStr) => {
-      const pairs = cookiesStr.split(';');
-      const newPairs = pairs.map(pair => {
-        const eqIdx = pair.indexOf('=');
-        if (eqIdx === -1) return pair;
-        const keyPart = pair.slice(0, eqIdx + 1);
-        const valPart = pair.slice(eqIdx + 1);
-        const trimmedVal = valPart.trim();
-        const leadingSpaces = valPart.match(/^\s*/)[0];
-        const trailingSpaces = valPart.match(/\s*$/)[0];
-
-        let newVal;
-        if (trimmedVal.length <= 6) {
-          newVal = tag;
-        } else {
-          newVal = trimmedVal.slice(0, 3) + tag + trimmedVal.slice(-3);
-        }
-        return keyPart + leadingSpaces + newVal + trailingSpaces;
-      });
-      return prefix + newPairs.join(';');
-    });
-
-    // Authorization headers: authorization:\s*([^\r\n]+)
-    transformed = transformed.replace(/(authorization\s*:\s*)([^\r\n]+)/gi, (match, prefix, authVal) => {
-      const trimmedVal = authVal.trim();
-      const leadingSpaces = authVal.match(/^\s*/)[0];
-      const trailingSpaces = authVal.match(/\s*$/)[0];
-
-      const authMatch = trimmedVal.match(/^([a-zA-Z0-9_-]+\s+)(.*)$/);
-      let authScheme = '';
-      let token = trimmedVal;
-      if (authMatch) {
-        authScheme = authMatch[1];
-        token = authMatch[2];
-      }
-
-      let newToken;
-      if (token.length <= 6) {
-        newToken = tag;
-      } else {
-        newToken = token.slice(0, 3) + tag + token.slice(-3);
-      }
-
-      return prefix + leadingSpaces + authScheme + newToken + trailingSpaces;
-    });
-
-    return transformed;
-  }
-
-  /**
-   * Formats HTML content for contenteditable elements with bold tags and optional red endpoints.
-   */
-  function formatContentEditableHeaders(transformedText, mode, useRed) {
-    const escapedTag = (mode === 'truncate') ? '\\[truncated\\]' : '\\[redacted\\]';
-    const regex = new RegExp(`([a-zA-Z0-9_\\-]{1,3})?(${escapedTag})([a-zA-Z0-9_\\-]{1,3})?`, 'g');
-
-    return transformedText.replace(regex, (m, first3, tagMatch, last3) => {
-      let out = '';
-      if (first3) {
-        out += useRed ? `<span style="color: #dc2626; font-weight: bold;">${first3}</span>` : first3;
-      }
-      out += `<b>${tagMatch}</b>`;
-      if (last3) {
-        out += useRed ? `<span style="color: #dc2626; font-weight: bold;">${last3}</span>` : last3;
-      }
-      return out;
-    });
-  }
-
-  /**
-   * Checks whether the element contains headers and positions the floating bar.
-   */
-  function checkAndShowHeaderFloatingBar(element) {
-    if (!element || !headerFloatingBar || !isEnabledOnThisPage) return;
-    const text = getElementText(element);
-    if (!hasSensitiveHeaders(text)) {
-      if (activeFocusedElement === element) {
-        hideHeaderFloatingBar();
-      }
-      return;
-    }
-
-    activeFocusedElement = element;
-    showHeaderFloatingBar(element);
-  }
-
-  /**
-   * Positions and displays the floating header action bar.
-   */
-  function showHeaderFloatingBar(element) {
-    if (!headerFloatingBar || !isElementVisible(element)) return;
-
-    headerFloatingBar.style.display = 'flex';
-    const elemRect = element.getBoundingClientRect();
-    const barRect = headerFloatingBar.getBoundingClientRect();
-
-    let top = elemRect.top - barRect.height - 8;
-    if (top < 6) {
-      top = elemRect.bottom + 8;
-    }
-
-    let left = elemRect.left;
-    if (left < 6) left = 6;
-    const maxLeft = window.innerWidth - barRect.width - 6;
-    if (left > maxLeft) left = maxLeft;
-
-    headerFloatingBar.style.top = `${top}px`;
-    headerFloatingBar.style.left = `${left}px`;
-  }
-
-  /**
-   * Hides the floating header action bar.
-   */
-  function hideHeaderFloatingBar() {
-    if (!headerFloatingBar) return;
-    headerFloatingBar.style.display = 'none';
-  }
-
-  /**
-   * Rebuilds the buttons inside the flying toolbar for textboxes.
+   * Rebuilds the unified flying toolbar containing Transform, Shortcuts, and Unwanted Headers.
+   * Group order: Transform, Shortcuts, Unwanted Headers.
    */
   function rebuildFlyingToolbar() {
     if (!flyingToolbar) return;
     flyingToolbar.innerHTML = '';
 
-    // "Remove Unwanted Headers" button
-    const removeHeadersBtn = document.createElement('button');
-    removeHeadersBtn.type = 'button';
-    removeHeadersBtn.className = 'helper-flying-header-btn';
-    removeHeadersBtn.textContent = 'Remove Unwanted Headers';
-    removeHeadersBtn.title = 'Strip sec-fetch-*, sec-ch-ua-*, and other configured unwanted headers from this text field';
-    removeHeadersBtn.addEventListener('mousedown', (e) => e.preventDefault());
-    removeHeadersBtn.addEventListener('click', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      if (activeFocusedElement) {
-        removeUnwantedHeadersFromElement(activeFocusedElement);
-      }
-    });
-    flyingToolbar.appendChild(removeHeadersBtn);
+    // Group 1: Transform
+    const transformGroup = document.createElement('div');
+    transformGroup.className = 'helper-toolbar-group helper-toolbar-group-transform';
 
-    // Shortcuts buttons
-    if (Array.isArray(activeShortcuts) && activeShortcuts.length > 0) {
+    const transformLabel = document.createElement('span');
+    transformLabel.className = 'helper-toolbar-group-label';
+    transformLabel.textContent = 'Transform';
+    transformGroup.appendChild(transformLabel);
+
+    const transformBtnsContainer = document.createElement('div');
+    transformBtnsContainer.className = 'helper-toolbar-group-buttons';
+
+    const transformConfigs = [
+      { text: 'Truncate', action: 'truncate', isRed: false },
+      { text: 'Redact', action: 'redact', isRed: false },
+      { text: 'Red Color Truncate', action: 'red-color-truncate', isRed: true },
+      { text: 'Red Color Redact', action: 'red-color-redact', isRed: true }
+    ];
+
+    transformConfigs.forEach(cfg => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'helper-bar-btn' + (cfg.isRed ? ' helper-bar-btn-red' : '');
+      btn.textContent = cfg.text;
+      btn.dataset.action = cfg.action;
+      btn.addEventListener('mousedown', (e) => e.preventDefault());
+      btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        handleSelectionTransformation(cfg.action);
+      });
+      transformBtnsContainer.appendChild(btn);
+    });
+    transformGroup.appendChild(transformBtnsContainer);
+    flyingToolbar.appendChild(transformGroup);
+
+    // Group 2: Shortcuts
+    if (isShortcutsEnabledOnSite && Array.isArray(activeShortcuts) && activeShortcuts.length > 0) {
+      const shortcutsGroup = document.createElement('div');
+      shortcutsGroup.className = 'helper-toolbar-group helper-toolbar-group-shortcuts';
+
+      const shortcutsLabel = document.createElement('span');
+      shortcutsLabel.className = 'helper-toolbar-group-label';
+      shortcutsLabel.textContent = 'Shortcuts';
+      shortcutsGroup.appendChild(shortcutsLabel);
+
+      const shortcutsBtnsContainer = document.createElement('div');
+      shortcutsBtnsContainer.className = 'helper-toolbar-group-buttons';
+
       activeShortcuts.forEach(sc => {
         const scBtn = document.createElement('button');
         scBtn.type = 'button';
@@ -426,33 +248,86 @@
         scBtn.addEventListener('click', (e) => {
           e.preventDefault();
           e.stopPropagation();
-          if (activeFocusedElement) {
-            executeShortcutOnElement(activeFocusedElement, sc);
+          const targetEl = activeFocusedElement || document.activeElement;
+          if (targetEl) {
+            executeShortcutOnElement(targetEl, sc);
           }
         });
-        flyingToolbar.appendChild(scBtn);
+        shortcutsBtnsContainer.appendChild(scBtn);
       });
+      shortcutsGroup.appendChild(shortcutsBtnsContainer);
+      flyingToolbar.appendChild(shortcutsGroup);
     }
+
+    // Group 3: Unwanted Headers
+    const headersGroup = document.createElement('div');
+    headersGroup.className = 'helper-toolbar-group helper-toolbar-group-headers';
+
+    const headersLabel = document.createElement('span');
+    headersLabel.className = 'helper-toolbar-group-label';
+    headersLabel.textContent = 'Unwanted Headers';
+    headersGroup.appendChild(headersLabel);
+
+    const headersBtnsContainer = document.createElement('div');
+    headersBtnsContainer.className = 'helper-toolbar-group-buttons';
+
+    const removeHeadersBtn = document.createElement('button');
+    removeHeadersBtn.type = 'button';
+    removeHeadersBtn.className = 'helper-flying-header-btn';
+    removeHeadersBtn.textContent = 'Remove Unwanted Headers';
+    removeHeadersBtn.title = 'Strip sec-fetch-*, sec-ch-ua-*, and other configured unwanted headers from this text field';
+    removeHeadersBtn.addEventListener('mousedown', (e) => e.preventDefault());
+    removeHeadersBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const targetEl = activeFocusedElement || document.activeElement;
+      if (targetEl) {
+        removeUnwantedHeadersFromElement(targetEl);
+      }
+    });
+    headersBtnsContainer.appendChild(removeHeadersBtn);
+    headersGroup.appendChild(headersBtnsContainer);
+    flyingToolbar.appendChild(headersGroup);
   }
 
   /**
-   * Positions and displays the flying toolbar for the focused textbox.
+   * Positions and displays the unified flying toolbar above the selected text.
    */
   function showFlyingToolbar(element) {
-    if (!flyingToolbar || !isElementVisible(element) || !isEnabledOnThisPage || !isShortcutsEnabledOnSite) {
+    if (!flyingToolbar || !isEnabledOnThisPage || !isElementVisible(element)) {
       hideFlyingToolbar();
       return;
     }
 
     flyingToolbar.style.display = 'flex';
-    const elemRect = element.getBoundingClientRect();
     const barRect = flyingToolbar.getBoundingClientRect();
 
-    let top = elemRect.top - barRect.height - 6;
-    if (top < 6) {
-      top = elemRect.top + 6;
+    let top = 0;
+    let left = 0;
+
+    const sel = window.getSelection();
+    let selRect = null;
+    if (sel && sel.rangeCount > 0 && !sel.isCollapsed) {
+      try {
+        const r = sel.getRangeAt(0);
+        const rect = r.getBoundingClientRect();
+        if (rect && (rect.width > 0 || rect.height > 0)) {
+          selRect = rect;
+        }
+      } catch (e) {
+        // Fallback to element rect
+      }
     }
-    let left = elemRect.right - barRect.width;
+
+    const elemRect = element.getBoundingClientRect();
+    const anchorRect = selRect || elemRect;
+
+    top = anchorRect.top - barRect.height - 8;
+    if (top < 6) {
+      top = anchorRect.bottom + 8;
+    }
+
+    left = anchorRect.left;
     if (left < 6) left = 6;
     if (left + barRect.width > window.innerWidth - 6) {
       left = window.innerWidth - barRect.width - 6;
@@ -462,6 +337,9 @@
     flyingToolbar.style.left = `${left}px`;
   }
 
+  /**
+   * Hides the unified flying toolbar.
+   */
   function hideFlyingToolbar() {
     if (flyingToolbar) {
       flyingToolbar.style.display = 'none';
@@ -469,14 +347,42 @@
   }
 
   /**
+   * Checks if text is selected in the element and shows the unified flying toolbar.
+   * If no text is selected, the toolbar remains hidden.
+   */
+  function checkAndShowFlyingToolbar(element) {
+    if (!flyingToolbar || !isEnabledOnThisPage || !element) {
+      hideFlyingToolbar();
+      return;
+    }
+    const selectedText = getSelectedText(element);
+    if (!selectedText || selectedText.trim().length === 0) {
+      hideFlyingToolbar();
+      return;
+    }
+    showFlyingToolbar(element);
+  }
+
+  /**
    * Matches a line of text against an unwanted header pattern (supports prefix wildcards like sec-fetch-* and base headers like sec-ch-ua).
+   * Ensures markdown formatting, code fences, and non-header lines are never matched.
    */
   function matchesHeaderPattern(line, pattern) {
     if (!line || !pattern) return false;
-    const cleanPat = pattern.trim().toLowerCase().replace(/:$/, '');
-    const colonIdx = line.indexOf(':');
-    const headerName = (colonIdx !== -1 ? line.slice(0, colonIdx) : line).trim().toLowerCase();
+    const trimmed = line.trim();
 
+    // A valid HTTP header line MUST contain a colon ':' separating the header name and value
+    const colonIdx = trimmed.indexOf(':');
+    if (colonIdx === -1) return false;
+
+    // Never match markdown fences or markdown headings
+    if (trimmed.startsWith('```') || trimmed.startsWith('~~~') || trimmed.startsWith('#')) return false;
+
+    // The header name before the colon must be a valid HTTP header token (alphanumeric, hyphens, underscores)
+    const headerName = trimmed.slice(0, colonIdx).trim().toLowerCase();
+    if (!headerName || !/^[a-zA-Z0-9_\-]+$/.test(headerName)) return false;
+
+    const cleanPat = pattern.trim().toLowerCase().replace(/:$/, '');
     if (cleanPat.endsWith('*')) {
       const prefix = cleanPat.slice(0, -1);
       const prefixWithoutDash = prefix.endsWith('-') ? prefix.slice(0, -1) : prefix;
@@ -486,12 +392,65 @@
   }
 
   /**
+   * Helper to collect all text nodes under a root DOM node.
+   */
+  function getTextNodesUnder(node) {
+    const textNodes = [];
+    const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT, null, false);
+    let n;
+    while ((n = walker.nextNode())) {
+      textNodes.push(n);
+    }
+    return textNodes;
+  }
+
+  /**
+   * Removes unwanted header lines from a contentEditable element without destroying its Markdown/DOM structure.
+   */
+  function removeUnwantedHeadersFromDOM(root, patterns) {
+    let removedCount = 0;
+    const allTextNodes = getTextNodesUnder(root);
+
+    for (const tn of allTextNodes) {
+      const val = tn.nodeValue;
+      if (!val) continue;
+
+      if (val.includes('\n')) {
+        const lines = val.split(/\r?\n/);
+        const filtered = [];
+        for (const line of lines) {
+          if (patterns.some(pat => matchesHeaderPattern(line, pat))) {
+            removedCount++;
+          } else {
+            filtered.push(line);
+          }
+        }
+        if (filtered.length !== lines.length) {
+          tn.nodeValue = filtered.join('\n');
+        }
+      } else {
+        const line = val.trim();
+        if (patterns.some(pat => matchesHeaderPattern(line, pat))) {
+          removedCount++;
+          const parent = tn.parentElement;
+          if (parent && parent !== root && parent.childNodes.length === 1 && (parent.tagName === 'DIV' || parent.tagName === 'P' || parent.tagName === 'LI')) {
+            parent.remove();
+          } else {
+            tn.nodeValue = '';
+          }
+        }
+      }
+    }
+
+    return removedCount;
+  }
+
+  /**
    * Removes all lines matching configured unwanted headers from the element.
+   * Completely preserves Markdown and code block formatting.
    */
   function removeUnwantedHeadersFromElement(element) {
     if (!element) return;
-    const currentText = getElementText(element);
-    const lines = currentText.split(/\r?\n/);
     const patterns = (activeUnwantedHeaders && activeUnwantedHeaders.length > 0)
       ? activeUnwantedHeaders
       : [
@@ -504,6 +463,21 @@
           'Accept-Encoding'
         ];
 
+    if (element.isContentEditable) {
+      const removedCount = removeUnwantedHeadersFromDOM(element, patterns);
+      if (removedCount > 0) {
+        element.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
+        element.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
+        updateOverlayForElement(element);
+        showTemporaryStatusFeedback(`Removed ${removedCount} unwanted header line${removedCount === 1 ? '' : 's'}`);
+      } else {
+        showTemporaryStatusFeedback('No unwanted headers found');
+      }
+      return;
+    }
+
+    const currentText = getElementText(element);
+    const lines = currentText.split(/\r?\n/);
     let removedCount = 0;
     const filteredLines = lines.filter(line => {
       const isUnwanted = patterns.some(pat => matchesHeaderPattern(line, pat));
@@ -611,47 +585,8 @@
   }
 
   /**
-   * Displays the Universal Selection Transformations Bar above highlighted text.
-   */
-  function checkAndShowSelectionFloatingBar(element) {
-    if (!selectionFloatingBar || !isEnabledOnThisPage) return;
-    const selectedText = getSelectedText(element);
-    if (!selectedText || selectedText.trim().length === 0) {
-      hideSelectionFloatingBar();
-      return;
-    }
-    showSelectionFloatingBar(element);
-  }
-
-  function showSelectionFloatingBar(element) {
-    if (!selectionFloatingBar || !isElementVisible(element)) return;
-
-    selectionFloatingBar.style.display = 'flex';
-    const elemRect = element.getBoundingClientRect();
-    const barRect = selectionFloatingBar.getBoundingClientRect();
-
-    let top = elemRect.top - barRect.height - 8;
-    if (top < 6) {
-      top = elemRect.bottom + 8;
-    }
-
-    let left = elemRect.left + 20;
-    if (left < 6) left = 6;
-    const maxLeft = window.innerWidth - barRect.width - 6;
-    if (left > maxLeft) left = maxLeft;
-
-    selectionFloatingBar.style.top = `${top}px`;
-    selectionFloatingBar.style.left = `${left}px`;
-  }
-
-  function hideSelectionFloatingBar() {
-    if (selectionFloatingBar) {
-      selectionFloatingBar.style.display = 'none';
-    }
-  }
-
-  /**
    * Handles Universal Selection Transformation directly on selected text.
+   * Preserves surrounding line breaks, markdown, and never modifies the next line.
    */
   function handleSelectionTransformation(action) {
     const el = activeFocusedElement || document.activeElement;
@@ -666,39 +601,82 @@
       if (typeof start !== 'number' || typeof end !== 'number' || start === end) return;
 
       const val = el.value;
-      const selected = val.substring(start, end);
-      let transformed;
+      const rawSelected = val.substring(start, end);
+
+      // Separate any leading and trailing line breaks or whitespace so they are never redacted
+      const leadingMatch = rawSelected.match(/^[\r\n\s]*/);
+      const leadingWs = leadingMatch ? leadingMatch[0] : '';
+      const trailingMatch = rawSelected.match(/[\r\n\s]*$/);
+      const trailingWs = trailingMatch ? trailingMatch[0] : '';
+
+      const targetText = rawSelected.substring(leadingWs.length, rawSelected.length - trailingWs.length);
+      if (!targetText) return;
+
       const tag = (mode === 'truncate') ? '[truncated]' : '[redacted]';
-      if (selected.length <= 6) {
-        transformed = tag;
+      let transformed;
+      if (targetText.includes('\n')) {
+        const lines = targetText.split(/\r?\n/);
+        transformed = lines.map(line => {
+          const lMatch = line.match(/^\s*/)[0];
+          const tMatch = line.match(/\s*$/)[0];
+          const core = line.substring(lMatch.length, line.length - tMatch.length);
+          if (!core) return line;
+          const trCore = core.length <= 6 ? tag : (core.slice(0, 3) + tag + core.slice(-3));
+          return lMatch + trCore + tMatch;
+        }).join('\n');
       } else {
-        transformed = selected.slice(0, 3) + tag + selected.slice(-3);
+        transformed = targetText.length <= 6 ? tag : (targetText.slice(0, 3) + tag + targetText.slice(-3));
       }
 
-      const newVal = val.slice(0, start) + transformed + val.slice(end);
+      const actualStart = start + leadingWs.length;
+      const actualEnd = end - trailingWs.length;
+      const newVal = val.slice(0, actualStart) + transformed + val.slice(actualEnd);
       setNativeValue(el, newVal);
-      el.selectionStart = el.selectionEnd = start + transformed.length;
+      el.selectionStart = actualStart;
+      el.selectionEnd = actualStart + transformed.length;
+
+      const record = trackedElements.get(el);
+      if (record) {
+        if (!record.redTokens) record.redTokens = new Set();
+        if (useRed) {
+          record.redTokens.add(actualStart);
+          record.useRed = true;
+        }
+      }
+
       el.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
       el.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
       updateOverlayForElement(el);
-      hideSelectionFloatingBar();
+      hideFlyingToolbar();
     } else if (el.isContentEditable || window.getSelection()) {
       const sel = window.getSelection();
       if (!sel || sel.rangeCount === 0 || sel.isCollapsed) return;
 
       const range = sel.getRangeAt(0);
-      const selected = range.toString();
-      if (!selected) return;
+      const rawSelected = range.toString();
+      if (!rawSelected) return;
+
+      const leadingMatch = rawSelected.match(/^[\r\n\s]*/);
+      const leadingWs = leadingMatch ? leadingMatch[0] : '';
+      const trailingMatch = rawSelected.match(/[\r\n\s]*$/);
+      const trailingWs = trailingMatch ? trailingMatch[0] : '';
+
+      const targetText = rawSelected.substring(leadingWs.length, rawSelected.length - trailingWs.length);
+      if (!targetText) return;
 
       let first3 = '';
       let last3 = '';
       const tag = (mode === 'truncate') ? '[truncated]' : '[redacted]';
-      if (selected.length > 6) {
-        first3 = selected.slice(0, 3);
-        last3 = selected.slice(-3);
+      if (targetText.length > 6) {
+        first3 = targetText.slice(0, 3);
+        last3 = targetText.slice(-3);
       }
 
-      let replacementNode;
+      const frag = document.createDocumentFragment();
+      if (leadingWs) {
+        frag.appendChild(document.createTextNode(leadingWs));
+      }
+
       if (useRed) {
         const span = document.createElement('span');
         if (first3) {
@@ -718,18 +696,22 @@
           l3Span.textContent = last3;
           span.appendChild(l3Span);
         }
-        replacementNode = span;
+        frag.appendChild(span);
       } else {
         const fullTag = first3 ? (first3 + tag + last3) : tag;
-        replacementNode = document.createTextNode(fullTag);
+        frag.appendChild(document.createTextNode(fullTag));
+      }
+
+      if (trailingWs) {
+        frag.appendChild(document.createTextNode(trailingWs));
       }
 
       range.deleteContents();
-      range.insertNode(replacementNode);
+      range.insertNode(frag);
       sel.removeAllRanges();
       el.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
       updateOverlayForElement(el);
-      hideSelectionFloatingBar();
+      hideFlyingToolbar();
     }
   }
 
@@ -776,36 +758,6 @@
     setTimeout(() => {
       hideFloatingTooltip();
     }, 2000);
-  }
-
-  /**
-   * Executes header redaction or truncation on the target element.
-   */
-  function handleHeaderAction(element, action) {
-    if (!element) return;
-    const currentText = getElementText(element);
-    const mode = (action === 'truncate' || action === 'red-color-truncate') ? 'truncate' : 'redact';
-    const useRed = (action === 'red-color-truncate' || action === 'red-color-redact');
-
-    const transformed = transformHeaders(currentText, mode);
-
-    const record = trackedElements.get(element);
-    if (record) {
-      record.useRed = useRed;
-    }
-
-    if (element.isContentEditable) {
-      element.innerHTML = formatContentEditableHeaders(transformed, mode, useRed);
-    } else {
-      setNativeValue(element, transformed);
-    }
-
-    // Dispatch input & change events for modern frameworks
-    element.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
-    element.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
-
-    updateOverlayForElement(element);
-    checkAndShowHeaderFloatingBar(element);
   }
 
   /**
@@ -861,8 +813,11 @@
   }
 
   function handleGlobalSelectionChange() {
-    if (activeFocusedElement) {
-      checkAndShowSelectionFloatingBar(activeFocusedElement);
+    const el = activeFocusedElement || document.activeElement;
+    if (el && isValidTextField(el)) {
+      checkAndShowFlyingToolbar(el);
+    } else {
+      hideFlyingToolbar();
     }
   }
 
@@ -904,12 +859,8 @@
     trackedElements.clear();
 
     hideFloatingTooltip();
-    hideHeaderFloatingBar();
-    hideSelectionFloatingBar();
     hideFlyingToolbar();
     floatingTooltip = null;
-    headerFloatingBar = null;
-    selectionFloatingBar = null;
     flyingToolbar = null;
     activeFocusedElement = null;
 
@@ -1026,46 +977,34 @@
     const onUpdate = () => {
       updateOverlayForElement(element);
       if (document.activeElement === element) {
-        checkAndShowHeaderFloatingBar(element);
-        showFlyingToolbar(element);
-        checkAndShowSelectionFloatingBar(element);
+        checkAndShowFlyingToolbar(element);
       }
     };
 
     const onScroll = () => {
       syncScroll(element);
       if (activeFocusedElement === element) {
-        if (headerFloatingBar && headerFloatingBar.style.display !== 'none') {
-          showHeaderFloatingBar(element);
-        }
         if (flyingToolbar && flyingToolbar.style.display !== 'none') {
           showFlyingToolbar(element);
-        }
-        if (selectionFloatingBar && selectionFloatingBar.style.display !== 'none') {
-          showSelectionFloatingBar(element);
         }
       }
     };
 
     const onFocus = () => {
       activeFocusedElement = element;
-      checkAndShowHeaderFloatingBar(element);
-      showFlyingToolbar(element);
-      checkAndShowSelectionFloatingBar(element);
+      checkAndShowFlyingToolbar(element);
     };
 
     const onSelectionChange = () => {
       if (activeFocusedElement === element) {
-        checkAndShowSelectionFloatingBar(element);
+        checkAndShowFlyingToolbar(element);
       }
     };
 
     const onBlur = () => {
       setTimeout(() => {
         if (activeFocusedElement === element && document.activeElement !== element) {
-          hideHeaderFloatingBar();
           hideFlyingToolbar();
-          hideSelectionFloatingBar();
         }
       }, 250);
     };
@@ -1100,8 +1039,7 @@
     updateOverlayForElement(element);
     if (document.activeElement === element) {
       activeFocusedElement = element;
-      checkAndShowHeaderFloatingBar(element);
-      showFlyingToolbar(element);
+      checkAndShowFlyingToolbar(element);
     }
   }
 
@@ -1113,9 +1051,7 @@
     if (!record) return;
 
     if (activeFocusedElement === element) {
-      hideHeaderFloatingBar();
       hideFlyingToolbar();
-      hideSelectionFloatingBar();
       activeFocusedElement = null;
     }
 
@@ -1163,9 +1099,7 @@
         updateOverlayForElement(target);
       }
       activeFocusedElement = target;
-      checkAndShowHeaderFloatingBar(target);
-      showFlyingToolbar(target);
-      checkAndShowSelectionFloatingBar(target);
+      checkAndShowFlyingToolbar(target);
     }
   }
 
@@ -1327,7 +1261,8 @@
       const tokenStart = match.index;
       const tokenEnd = tokenStart + match[0].length;
 
-      if (useRed) {
+      const isTokenRed = (record && record.redTokens) ? record.redTokens.has(tokenStart) : useRed;
+      if (isTokenRed) {
         const first3Start = Math.max(0, tokenStart - 3);
         const first3End = tokenStart;
         if (first3End > first3Start) {

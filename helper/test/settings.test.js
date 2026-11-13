@@ -14,7 +14,6 @@ const requiredSettingsIds = [
   'nav-rules',
   'nav-shortcuts',
   'nav-header-cleaner',
-  'nav-import-export',
   // Whitelist Tab
   'tab-whitelist',
   'add-whitelist-form',
@@ -70,24 +69,10 @@ const requiredSettingsIds = [
   'header-pattern-input',
   'reset-headers-btn',
   'header-cleaner-list',
-  // Import/Export Tab
-  'tab-import-export',
-  'export-json-btn',
-  'import-file-input',
-  'import-preview',
-  'import-preview-text',
-  'import-confirm-btn',
-  // Sidebar Import/Export
-  'sidebar-import-btn',
-  'sidebar-export-btn',
   // Global
   'toast',
-  'settings-sync-indicator',
-  // Theme & File Persistence
+  // Theme
   'theme-toggle-btn',
-  'storage-setup-banner',
-  'banner-store-file-btn',
-  'banner-select-file-btn',
   // Markdown & Multi-Answer
   'snippet-markdown-preview',
   'snippet-answers-nav',
@@ -98,14 +83,14 @@ for (const id of requiredSettingsIds) {
   assert(settingsHtml.includes(`id="${id}"`), `settings.html must contain id="${id}"`);
 }
 
+// Verify removed elements are absent
+assert(!settingsHtml.includes('id="storage-setup-banner"'), 'storage-setup-banner must be removed');
+assert(!settingsHtml.includes('id="tab-import-export"'), 'tab-import-export must be removed');
+assert(!settingsHtml.includes('id="nav-file-sync"'), 'nav-file-sync must be removed');
+
 // Verify dark theme is configured by default
 assert(settingsHtml.includes('data-theme="dark"'), 'settings.html must default to data-theme="dark"');
 
-// Verify dedicated file sync page exists
-const syncHtmlPath = path.join(__dirname, '../sync/sync.html');
-assert(fs.existsSync(syncHtmlPath), 'sync/sync.html must exist as a dedicated sync page');
-
 console.log('[PASS] All essential settings elements present in settings.html');
 console.log('[PASS] Default dark theme verified in settings.html');
-console.log('[PASS] Dedicated sync page verified');
 console.log('[PASS] SETTINGS PAGE INTEGRITY TEST PASSED!');

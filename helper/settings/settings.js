@@ -13,18 +13,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   const themeToggleBtn = document.getElementById('theme-toggle-btn');
   const themeToggleLabel = document.getElementById('theme-toggle-label');
 
-  // Sidebar Import/Export
-  const sidebarImportBtn = document.getElementById('sidebar-import-btn');
-  const sidebarExportBtn = document.getElementById('sidebar-export-btn');
-  const sidebarImportInput = document.getElementById('sidebar-import-input');
 
-  // File setup elements
-  const storageSetupBanner = document.getElementById('storage-setup-banner');
-  const bannerStoreFileBtn = document.getElementById('banner-store-file-btn');
-  const bannerSelectFileBtn = document.getElementById('banner-select-file-btn');
-  const bannerDismissBtn = document.getElementById('banner-dismiss-btn');
-  const pickerSaveBtn = document.getElementById('picker-save-btn');
-  const pickerOpenBtn = document.getElementById('picker-open-btn');
 
   // Whitelist elements
   const addWhitelistForm = document.getElementById('add-whitelist-form');
@@ -93,14 +82,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   const rulesCount = document.getElementById('rules-count');
   const rulesEmpty = document.getElementById('rules-empty');
 
-  // Import / Export elements
-  const exportJsonBtn = document.getElementById('export-json-btn');
-  const importFileInput = document.getElementById('import-file-input');
-  const importPreview = document.getElementById('import-preview');
-  const importPreviewText = document.getElementById('import-preview-text');
-  const importConfirmBtn = document.getElementById('import-confirm-btn');
 
-  let pendingImportData = null;
 
   // Active Snippet Form Multi-Answer state
   let currentFormAnswers = [''];
@@ -259,165 +241,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         themeToggleLabel.textContent = `Theme: ${nextTheme === 'dark' ? 'Dark' : 'Light'}`;
       }
       showToast(`Switched to ${nextTheme} theme`);
-    });
-  }
-
-  // --- File Storage Setup & Picker Handlers ---
-  async function initFileSetupPrompt() {
-    try {
-      const isConfigured = await StorageManager.getFileConfigured();
-      if (!isConfigured && storageSetupBanner) {
-        storageSetupBanner.style.display = 'flex';
-      }
-    } catch (err) {
-      // Ignore
-    }
-  }
-
-  async function handleStoreToFile() {
-    try {
-      const config = await StorageManager.exportConfiguration();
-      const content = JSON.stringify(config, null, 2);
-
-      if (window.showSaveFilePicker) {
-        const handle = await window.showSaveFilePicker({
-          suggestedName: 'helper-data.json',
-          types: [
-            {
-              description: 'Helper Configuration Data (*.json, *.js)',
-              accept: {
-                'application/json': ['.json'],
-                'application/javascript': ['.js'],
-                'text/plain': ['.txt']
-              }
-            }
-          ]
-        });
-        const writable = await handle.createWritable();
-        await writable.write(content);
-        await writable.close();
-
-        await StorageManager.setFileConfigured(true);
-        if (storageSetupBanner) storageSetupBanner.style.display = 'none';
-        showToast('Helper data successfully saved to file!');
-      } else {
-        const blob = new Blob([content], { type: 'application/json' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = 'helper-data.json';
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-
-        await StorageManager.setFileConfigured(true);
-        if (storageSetupBanner) storageSetupBanner.style.display = 'none';
-        showToast('Helper data saved as helper-data.json');
-      }
-    } catch (err) {
-      if (err.name !== 'AbortError') {
-        showToast('Save file failed: ' + err.message, 'error');
-      }
-    }
-  }
-
-  async function handleSelectExistingFile() {
-    try {
-      if (window.showOpenFilePicker) {
-        const [handle] = await window.showOpenFilePicker({
-          types: [
-            {
-              description: 'Helper Configuration Data (*.json, *.js)',
-              accept: {
-                'application/json': ['.json'],
-                'application/javascript': ['.js'],
-                'text/plain': ['.txt']
-              }
-            }
-          ]
-        });
-        const file = await handle.getFile();
-        const text = await file.text();
-        await StorageManager.importConfiguration(text);
-        await StorageManager.setFileConfigured(true);
-        if (storageSetupBanner) storageSetupBanner.style.display = 'none';
-        showToast('Configuration restored from selected file!');
-        await Promise.all([renderWhitelist(), renderSnippets(), renderRules()]);
-      } else if (importFileInput) {
-        importFileInput.click();
-      }
-    } catch (err) {
-      if (err.name !== 'AbortError') {
-        showToast('Select file failed: ' + err.message, 'error');
-      }
-    }
-  }
-
-  if (bannerStoreFileBtn) bannerStoreFileBtn.addEventListener('click', handleStoreToFile);
-  if (pickerSaveBtn) pickerSaveBtn.addEventListener('click', handleStoreToFile);
-
-  if (bannerSelectFileBtn) bannerSelectFileBtn.addEventListener('click', handleSelectExistingFile);
-  if (pickerOpenBtn) pickerOpenBtn.addEventListener('click', handleSelectExistingFile);
-
-  if (bannerDismissBtn) {
-    bannerDismissBtn.addEventListener('click', async () => {
-      await StorageManager.setFileConfigured(true);
-      if (storageSetupBanner) storageSetupBanner.style.display = 'none';
-      showToast('File prompt dismissed');
-    });
-  }
-
-  // Sidebar Import / Export Handlers
-  if (sidebarImportBtn && sidebarImportInput) {
-    sidebarImportBtn.addEventListener('click', () => {
-      sidebarImportInput.click();
-    });
-
-    sidebarImportInput.addEventListener('change', (e) => {
-      const file = e.target.files && e.target.files[0];
-      if (!file) return;
-      const reader = new FileReader();
-      reader.onload = async (event) => {
-        try {
-          const text = event.target.result;
-          await StorageManager.importConfiguration(text, 'replace');
-          showToast('Configuration successfully imported!');
-          sidebarImportInput.value = '';
-          await Promise.all([
-            renderWhitelist(),
-            renderBlacklist(),
-            renderSnippets(),
-            renderRules(),
-            renderShortcuts(),
-            renderHeaderCleaner()
-          ]);
-        } catch (err) {
-          showToast('Import failed: ' + err.message, 'error');
-        }
-      };
-      reader.readAsText(file);
-    });
-  }
-
-  if (sidebarExportBtn) {
-    sidebarExportBtn.addEventListener('click', async () => {
-      try {
-        const config = await StorageManager.exportConfiguration();
-        const jsonStr = JSON.stringify(config, null, 2);
-        const blob = new Blob([jsonStr], { type: 'application/json' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `helper-backup-${new Date().toISOString().slice(0, 10)}.json`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-        showToast('Configuration exported successfully');
-      } catch (err) {
-        showToast('Export failed: ' + err.message, 'error');
-      }
     });
   }
 
@@ -1294,81 +1117,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   }
 
-  // --- Import & Export Management ---
-  exportJsonBtn.addEventListener('click', async () => {
-    try {
-      const config = await StorageManager.exportConfiguration();
-      const jsonStr = JSON.stringify(config, null, 2);
-      const blob = new Blob([jsonStr], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `helper-backup-${new Date().toISOString().slice(0, 10)}.json`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-
-      showToast('Configuration exported successfully');
-    } catch (err) {
-      showToast('Export failed: ' + err.message, 'error');
-    }
-  });
-
-  importFileInput.addEventListener('change', (e) => {
-    const file = e.target.files && e.target.files[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      try {
-        const text = event.target.result;
-        const parsed = JSON.parse(text);
-        if (!parsed || typeof parsed !== 'object') {
-          throw new Error('File content is not a valid JSON object');
-        }
-
-        const snippetCount = Array.isArray(parsed.snippets) ? parsed.snippets.length : 0;
-        const rulesCountVal = Array.isArray(parsed.replacer_rules) ? parsed.replacer_rules.length : 0;
-        const whitelistCountVal = Array.isArray(parsed.allowlist) ? parsed.allowlist.length : 0;
-
-        pendingImportData = text;
-        importPreviewText.textContent = `Valid backup found: ${whitelistCountVal} whitelisted site(s), ${snippetCount} snippet(s), ${rulesCountVal} rule(s).`;
-        importPreview.style.display = 'flex';
-      } catch (err) {
-        showToast('Invalid JSON file: ' + err.message, 'error');
-        importPreview.style.display = 'none';
-        pendingImportData = null;
-      }
-    };
-    reader.readAsText(file);
-  });
-
-  importConfirmBtn.addEventListener('click', async () => {
-    if (!pendingImportData) return;
-
-    try {
-      await StorageManager.importConfiguration(pendingImportData);
-      showToast('Configuration successfully restored!');
-      importPreview.style.display = 'none';
-      importFileInput.value = '';
-      pendingImportData = null;
-
-      // Refresh all tabs
-      await Promise.all([
-        renderWhitelist(),
-        renderBlacklist(),
-        renderSnippets(),
-        renderRules(),
-        renderShortcuts(),
-        renderHeaderCleaner()
-      ]);
-    } catch (err) {
-      showToast('Import failed: ' + err.message, 'error');
-    }
-  });
-
   // Listen for storage changes from other views
   chrome.storage.onChanged.addListener(() => {
     renderWhitelist();
@@ -1379,9 +1127,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     renderHeaderCleaner();
   });
 
-  // Initialize Theme, Setup Prompt, Answer Tabs, and Data
+  // Initialize Theme, Answer Tabs, and Data
   await initTheme();
-  await initFileSetupPrompt();
   renderAnswerTabs();
   updateLiveMarkdownPreview();
   await Promise.all([

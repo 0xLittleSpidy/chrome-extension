@@ -20,7 +20,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   const popupSnippetsList = document.getElementById('popup-snippets-list');
   const popupSnippetsEmpty = document.getElementById('popup-snippets-empty');
   const popupCategoryFilter = document.getElementById('popup-category-filter');
-  const syncStatusIndicator = document.getElementById('sync-status-indicator');
 
   let currentTabUrl = '';
   let currentSiteId = '';
@@ -28,24 +27,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   let currentBlacklist = [];
   let selectedCategory = 'all';
   let isScriptable = false;
-
-  function triggerSyncPulse() {
-    if (syncStatusIndicator) {
-      syncStatusIndicator.classList.remove('syncing');
-      void syncStatusIndicator.offsetWidth;
-      syncStatusIndicator.classList.add('syncing');
-      setTimeout(() => {
-        syncStatusIndicator.classList.remove('syncing');
-      }, 900);
-    }
-  }
-
-  if (syncStatusIndicator) {
-    syncStatusIndicator.addEventListener('click', () => {
-      triggerSyncPulse();
-      showFeedback('Sync is active', 'success');
-    });
-  }
 
   // 1. Get current tab information
   try {

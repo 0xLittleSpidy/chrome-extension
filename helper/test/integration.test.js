@@ -359,9 +359,9 @@ async function runTest() {
   assert(dynamicReplacement.includes('They were active.'), 'Dynamic field "are" must be replaced with "were"');
   console.log('[PASS] Dynamically created text fields are automatically detected and supported.');
 
-  // 11b. Test Sensitive Header Floating Bar (Cookie & Authorization)
-  console.log('[Headers Test] Testing sensitive header detection and floating bar...');
-  const headerBarVisible = await evalInPage(`
+  // 11b. Verify Removal of Old "Headers" Floating Bar
+  console.log('[Headers Test] Verifying removal of old "Headers" floating bar...');
+  const headerBarAbsent = await evalInPage(`
     (() => {
       const el = document.getElementById('textarea-headers');
       if (!el) return { found: false, error: 'textarea-headers not found' };
@@ -372,48 +372,13 @@ async function runTest() {
       const bar = host.shadowRoot.querySelector('.helper-header-floating-bar');
       return {
         found: true,
-        barExists: !!bar,
-        display: bar ? bar.style.display : 'none',
-        buttons: bar ? Array.from(bar.querySelectorAll('.helper-bar-btn')).map(b => b.textContent) : []
+        barExists: !!bar
       };
     })()
   `);
-  assert.strictEqual(headerBarVisible.found, true);
-  assert.strictEqual(headerBarVisible.barExists, true);
-  assert.strictEqual(headerBarVisible.display, 'flex');
-  assert.deepStrictEqual(headerBarVisible.buttons, ['Truncate', 'Redact', 'Red Color Truncate', 'Red Color Redact']);
-  console.log('[PASS] Floating header bar appears on focus with all 4 required options.');
-
-  // Click "Red Color Redact" button on floating bar
-  console.log('[Headers Test] Clicking "Red Color Redact" on floating bar...');
-  const redactionResult = await evalInPage(`
-    (() => {
-      const host = document.getElementById('is-highlighter-extension-root');
-      const bar = host.shadowRoot.querySelector('.helper-header-floating-bar');
-      const redRedactBtn = Array.from(bar.querySelectorAll('.helper-bar-btn')).find(b => b.dataset.action === 'red-color-redact');
-      if (!redRedactBtn) return { success: false, error: 'btn-not-found' };
-      redRedactBtn.click();
-
-      const el = document.getElementById('textarea-headers');
-      const bTags = Array.from(host.shadowRoot.querySelectorAll('.helper-redacted-tag')).map(t => t.textContent);
-      const redSpans = Array.from(host.shadowRoot.querySelectorAll('.helper-redacted-endpoint-red')).map(s => s.textContent);
-
-      return {
-        success: true,
-        val: el.value,
-        bTags,
-        redSpans
-      };
-    })()
-  `);
-  assert.strictEqual(redactionResult.success, true);
-  assert(redactionResult.val.includes('google=abc[redacted]xyz'));
-  assert(redactionResult.val.includes('yahoo=sec[redacted]999'));
-  assert(redactionResult.val.includes('Authorization: bearer myl[redacted]789'));
-  assert(redactionResult.bTags.includes('[redacted]'), 'Tag [redacted] must be rendered bold in overlay');
-  assert(redactionResult.redSpans.includes('abc'), 'Endpoints must be rendered in red');
-  assert(redactionResult.redSpans.includes('xyz'), 'Endpoints must be rendered in red');
-  console.log('[PASS] Header redaction preserves first 3 and last 3 characters, bolds [redacted], and colors endpoints red.');
+  assert.strictEqual(headerBarAbsent.found, true);
+  assert.strictEqual(headerBarAbsent.barExists, false, 'Old helper-header-floating-bar must be completely removed');
+  console.log('[PASS] Old "Headers" floating bar is completely removed.');
 
   // 12. Test Active Site Replacer Switch (pause replacer without removing from whitelist)
   console.log('[Per-Site Switch] Pausing replacer on 127.0.0.1:' + PORT + '...');
@@ -552,8 +517,8 @@ async function runTest() {
   assert(pastedVal.includes('Hello Direct Paste!'), 'Textarea must contain directly pasted snippet text');
   console.log('[PASS] Snippet paste action successfully inserts text into focused field.');
 
-  // 14d. Test Flying Toolbar & Unwanted Headers Cleaner
-  console.log('[Flying Toolbar] Testing flying toolbar and unwanted header cleaner...');
+  // 14d. Test Unified Flying Toolbar (Only on Selection, Group Order: Transform, Shortcuts, Unwanted Headers)
+  console.log('[Flying Toolbar] Testing unified flying toolbar grouping and display on selection...');
   await evalInSW(`
     (async () => {
       await StorageManager.saveShortcut({ id: 'sc-test-1', name: 'PasteHelper', keys: 'Ctrl+V' });
@@ -561,86 +526,108 @@ async function runTest() {
   `);
   await new Promise(r => setTimeout(r, 300));
 
-  const headerCleanResult = await evalInPage(`
+  const toolbarSelectionResult = await evalInPage(`
     (async () => {
       const ta = document.getElementById('textarea-standard');
-      ta.value = 'Host: api.example.com\\nsec-fetch-mode: cors\\nsec-ch-ua: "Chromium";v="124"\\nAccept: text/plain\\nPriority: u=1';
+      ta.value = 'Text for toolbar test';
       ta.focus();
       ta.dispatchEvent(new Event('input', { bubbles: true }));
 
-      await new Promise(r => setTimeout(r, 200));
+      await new Promise(r => setTimeout(r, 150));
       const host = document.getElementById('is-highlighter-extension-root');
       if (!host || !host.shadowRoot) return { error: 'No shadow root' };
 
       const toolbar = host.shadowRoot.querySelector('.helper-flying-toolbar');
-      if (!toolbar) return { error: 'No flying toolbar' };
+      const hiddenWithoutSelection = !toolbar || toolbar.style.display === 'none';
 
+      // Now select text
+      ta.setSelectionRange(0, ta.value.length);
+      ta.dispatchEvent(new Event('select', { bubbles: true }));
+      ta.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+      document.dispatchEvent(new Event('selectionchange'));
+
+      await new Promise(r => setTimeout(r, 200));
+      const visibleOnSelection = toolbar && toolbar.style.display !== 'none';
+
+      const groups = Array.from(toolbar.querySelectorAll('.helper-toolbar-group-label')).map(l => l.textContent.trim());
+
+      return {
+        hiddenWithoutSelection,
+        visibleOnSelection,
+        groups
+      };
+    })()
+  `);
+  assert.strictEqual(toolbarSelectionResult.hiddenWithoutSelection, true, 'Flying toolbar must be hidden when no text is selected');
+  assert.strictEqual(toolbarSelectionResult.visibleOnSelection, true, 'Flying toolbar must be visible when text is selected');
+  assert.deepStrictEqual(toolbarSelectionResult.groups, ['Transform', 'Shortcuts', 'Unwanted Headers'], 'Groups must be in order: Transform, Shortcuts, Unwanted Headers');
+  console.log('[PASS] Unified flying toolbar appears only on text selection in correct group order.');
+
+  // 14e. Test Unwanted Headers Cleaner preserving Markdown & Code format
+  console.log('[Markdown Cleaner] Testing unwanted headers removal inside markdown code blocks...');
+  const markdownCleanResult = await evalInPage(`
+    (async () => {
+      const ta = document.getElementById('textarea-standard');
+      ta.value = '# API Specification\\n\\n\`\`\`http\\nPOST /v1/data HTTP/1.1\\nHost: example.com\\nsec-fetch-mode: cors\\nsec-ch-ua: "TestBrowser"\\nAccept: application/json\\nPriority: u=1\\n\`\`\`\\n\\nEnd of document.';
+      ta.focus();
+      ta.setSelectionRange(0, ta.value.length);
+      ta.dispatchEvent(new Event('select', { bubbles: true }));
+      document.dispatchEvent(new Event('selectionchange'));
+
+      await new Promise(r => setTimeout(r, 200));
+      const host = document.getElementById('is-highlighter-extension-root');
+      const toolbar = host.shadowRoot.querySelector('.helper-flying-toolbar');
       const removeBtn = toolbar.querySelector('.helper-flying-header-btn');
-      if (!removeBtn) return { error: 'No remove unwanted headers button' };
-
-      const shortcutBtn = toolbar.querySelector('.helper-flying-shortcut-btn');
-      const hasShortcut = shortcutBtn && shortcutBtn.textContent === 'PasteHelper';
-
       removeBtn.click();
       await new Promise(r => setTimeout(r, 200));
 
       return {
-        cleanedValue: ta.value,
-        toolbarVisible: toolbar.style.display !== 'none',
-        hasShortcut
+        cleanedValue: ta.value
       };
     })()
   `);
-  assert.strictEqual(headerCleanResult.toolbarVisible, true, 'Flying toolbar must be visible on focused textbox');
-  assert.strictEqual(headerCleanResult.hasShortcut, true, 'Flying toolbar must include configured shortcuts');
-  assert(!headerCleanResult.cleanedValue.includes('sec-fetch-mode'), 'sec-fetch-mode header must be stripped');
-  assert(!headerCleanResult.cleanedValue.includes('sec-ch-ua'), 'sec-ch-ua header must be stripped');
-  assert(!headerCleanResult.cleanedValue.includes('Priority:'), 'Priority header must be stripped');
-  assert(headerCleanResult.cleanedValue.includes('Host: api.example.com'), 'Host header must be preserved');
-  assert(headerCleanResult.cleanedValue.includes('Accept: text/plain'), 'Accept header must be preserved');
-  console.log('[PASS] Flying toolbar displays shortcuts and strips unwanted headers accurately.');
+  assert(markdownCleanResult.cleanedValue.includes('```http'), 'Markdown code fence ```http must be preserved');
+  assert(markdownCleanResult.cleanedValue.includes('```\n\nEnd of document.'), 'Closing markdown code fence must be preserved');
+  assert(markdownCleanResult.cleanedValue.includes('# API Specification'), 'Markdown heading must be preserved');
+  assert(markdownCleanResult.cleanedValue.includes('Host: example.com'), 'Host header must be preserved');
+  assert(markdownCleanResult.cleanedValue.includes('Accept: application/json'), 'Accept header must be preserved');
+  assert(!markdownCleanResult.cleanedValue.includes('sec-fetch-mode'), 'sec-fetch-mode must be removed');
+  assert(!markdownCleanResult.cleanedValue.includes('sec-ch-ua'), 'sec-ch-ua must be removed');
+  assert(!markdownCleanResult.cleanedValue.includes('Priority:'), 'Priority header line must be removed');
+  console.log('[PASS] Markdown code format and document structure preserved while stripping unwanted headers.');
 
-  // 14e. Test Universal Selection Transformation Bar
-  console.log('[Selection Bar] Testing universal text selection transformation bar...');
-  const selTransformResult = await evalInPage(`
+  // 14f. Test Red Color Redact does NOT modify next line
+  console.log('[Redact Test] Testing Red Color Redact on single line preserving next line...');
+  const redColorRedactResult = await evalInPage(`
     (async () => {
       const ta = document.getElementById('textarea-standard');
-      ta.value = 'MySecretToken1234567890SecretTail';
+      ta.value = 'secret_token_12345\\nNext line untouched';
       ta.focus();
-      ta.dispatchEvent(new Event('focus', { bubbles: true }));
-      ta.setSelectionRange(0, ta.value.length);
+      // Select only the first line "secret_token_12345"
+      ta.setSelectionRange(0, 18);
       ta.dispatchEvent(new Event('select', { bubbles: true }));
-      ta.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+      document.dispatchEvent(new Event('selectionchange'));
 
       await new Promise(r => setTimeout(r, 200));
       const host = document.getElementById('is-highlighter-extension-root');
-      if (!host || !host.shadowRoot) return { error: 'No shadow root' };
-
-      const bar = host.shadowRoot.querySelector('.helper-selection-floating-bar');
-      if (!bar) return { error: 'No selection bar' };
-
-      const buttons = Array.from(bar.querySelectorAll('.helper-bar-btn')).map(b => b.textContent);
-
-      const truncBtn = Array.from(bar.querySelectorAll('.helper-bar-btn')).find(b => b.textContent === 'Truncate');
-      if (!truncBtn) return { error: 'No Truncate button' };
-      truncBtn.click();
+      const toolbar = host.shadowRoot.querySelector('.helper-flying-toolbar');
+      const redBtn = Array.from(toolbar.querySelectorAll('.helper-bar-btn-red')).find(b => b.dataset.action === 'red-color-redact');
+      if (!redBtn) return { error: 'Red color redact button not found' };
+      redBtn.click();
       await new Promise(r => setTimeout(r, 200));
 
+      const redSpans = Array.from(host.shadowRoot.querySelectorAll('.helper-redacted-endpoint-red')).map(s => s.textContent);
+
       return {
-        buttons,
-        newValue: ta.value
+        val: ta.value,
+        redSpans
       };
     })()
   `);
-  if (selTransformResult.error) {
-    console.error('[Selection Bar Error]:', selTransformResult.error);
-  }
-  assert(selTransformResult.buttons.includes('Truncate'), 'Selection bar must have Truncate button');
-  assert(selTransformResult.buttons.includes('Redact'), 'Selection bar must have Redact button');
-  assert(selTransformResult.buttons.includes('Red Color Truncate'), 'Selection bar must have Red Color Truncate button');
-  assert(selTransformResult.buttons.includes('Red Color Redact'), 'Selection bar must have Red Color Redact button');
-  assert.strictEqual(selTransformResult.newValue, 'MyS[truncated]ail', 'Selected text must be truncated preserving 3-char prefix and suffix');
-  console.log('[PASS] Universal text selection transformation bar transforms selected text accurately.');
+  assert(redColorRedactResult.val.startsWith('sec[redacted]345\nNext line untouched'), 'Only selected line must be redacted, next line must remain untouched');
+  assert(redColorRedactResult.val.includes('Next line untouched'), 'Next line must be preserved without any modifications');
+  assert(!redColorRedactResult.val.includes('[redacted]\n[redacted]'), 'Must not create extra redact on next line');
+  console.log('[PASS] Red Color Redact transforms selected text without modifying or adding redact to next line.');
 
   // 14f. Test Blacklist Override
   console.log('[Blacklist] Testing blacklist override on allowlisted site...');

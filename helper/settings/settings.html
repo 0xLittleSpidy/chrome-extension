@@ -45,22 +45,9 @@
         <button class="nav-btn" data-tab="tab-header-cleaner" id="nav-header-cleaner">
           <span class="nav-label">Header Cleaner</span>
         </button>
-        <button class="nav-btn" data-tab="tab-import-export" id="nav-import-export">
-          <span class="nav-label">Import & Export</span>
-        </button>
-        <a href="../sync/sync.html" class="nav-btn" id="nav-file-sync" style="text-decoration: none;">
-          <span class="nav-label">File Sync Page</span>
-        </a>
       </nav>
 
       <div class="sidebar-footer">
-        <input type="file" id="sidebar-import-input" accept=".json,application/json" style="display: none;">
-        <button id="sidebar-import-btn" class="btn-file-setup" type="button" style="margin-bottom: 6px;">
-          <span>Import</span>
-        </button>
-        <button id="sidebar-export-btn" class="btn-file-setup" type="button" style="margin-bottom: 8px;">
-          <span>Export</span>
-        </button>
         <button id="theme-toggle-btn" class="btn-theme-toggle" type="button" aria-label="Toggle theme">
           <span id="theme-toggle-label">Theme: Dark</span>
         </button>
@@ -72,19 +59,6 @@
     <main class="main-content">
       <!-- Global Feedback Toast -->
       <div id="toast" class="toast" role="status" aria-live="polite"></div>
-
-      <!-- Storage File Setup Banner -->
-      <div id="storage-setup-banner" class="setup-banner" style="display: none;">
-        <div class="setup-banner-content">
-          <h3 class="setup-banner-title">Store or Select Data File</h3>
-          <p class="setup-banner-desc">Save your snippets, replacement rules, and whitelist to a local file, or select your existing file to sync.</p>
-        </div>
-        <div class="setup-banner-actions">
-          <button id="banner-store-file-btn" class="btn btn-primary btn-sm">Store to File (helper-data.json)</button>
-          <button id="banner-select-file-btn" class="btn btn-secondary btn-sm">Select Existing File</button>
-          <button id="banner-dismiss-btn" class="btn btn-ghost btn-sm">Dismiss</button>
-        </div>
-      </div>
 
       <!-- Tab 1: Whitelist -->
       <section id="tab-whitelist" class="tab-panel active">
@@ -427,47 +401,6 @@
           </div>
           <div id="header-cleaner-list" class="rules-table-container">
             <!-- Dynamically populated -->
-          </div>
-        </div>
-      </section>
-
-      <!-- Tab 6: Import & Export -->
-      <section id="tab-import-export" class="tab-panel">
-        <header class="section-header">
-          <div>
-            <h2 class="section-title">Import & Export Configuration</h2>
-            <p class="section-desc">Share saved snippets, replacement rules, and whitelist entries with other users via a JSON file.</p>
-          </div>
-        </header>
-
-        <div class="card">
-          <h3 class="card-title">Export Settings</h3>
-          <p class="card-subtext">Download your complete configuration including all snippets, replacer rules, and whitelisted sites as a single JSON file.</p>
-          <div class="form-actions">
-            <button id="export-json-btn" class="btn btn-primary">Download JSON File</button>
-            <button id="picker-save-btn" class="btn btn-secondary" type="button">Store to File (helper-data.json)</button>
-          </div>
-        </div>
-
-        <div class="card">
-          <h3 class="card-title">Import Settings</h3>
-          <p class="card-subtext">Upload a previously exported JSON file to restore or synchronize your snippets and rules.</p>
-          
-          <div class="form-actions" style="margin-bottom: 12px;">
-            <button id="picker-open-btn" class="btn btn-secondary" type="button">Select Existing File via Picker</button>
-          </div>
-
-          <div class="import-drop-zone">
-            <input type="file" id="import-file-input" accept=".json,application/json" class="file-input">
-            <label for="import-file-input" class="file-label">
-              <span class="file-title">Select or drag JSON file here</span>
-              <span class="file-subtitle">Accepts valid Helper backup .json files</span>
-            </label>
-          </div>
-
-          <div id="import-preview" class="import-preview" style="display: none;">
-            <p id="import-preview-text" class="preview-text"></p>
-            <button id="import-confirm-btn" class="btn btn-primary">Confirm Import</button>
           </div>
         </div>
       </section>

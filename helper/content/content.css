@@ -179,23 +179,49 @@
   border-radius: 2px !important;
 }
 
-/* Flying Shortcuts & Header Cleaner Toolbar inside textboxes */
+/* Unified Flying Toolbar (shown only when text is selected) */
 .helper-flying-toolbar {
   position: fixed !important;
   z-index: 2147483647 !important;
   background-color: #0f172a !important;
   border: 1px solid #334155 !important;
-  box-shadow: 0 8px 18px -2px rgba(0, 0, 0, 0.35) !important;
-  border-radius: 6px !important;
-  padding: 4px 8px !important;
+  box-shadow: 0 10px 22px -2px rgba(0, 0, 0, 0.45) !important;
+  border-radius: 8px !important;
+  padding: 5px 10px !important;
   display: flex !important;
   align-items: center !important;
-  gap: 6px !important;
+  gap: 10px !important;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
   pointer-events: auto !important;
   user-select: none !important;
   -webkit-user-select: none !important;
   animation: helper-bar-fadein 0.15s ease-out !important;
+}
+
+.helper-toolbar-group {
+  display: flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+}
+
+.helper-toolbar-group:not(:last-child) {
+  border-right: 1px solid #334155 !important;
+  padding-right: 10px !important;
+}
+
+.helper-toolbar-group-label {
+  font-size: 11px !important;
+  font-weight: 700 !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.5px !important;
+  color: #94a3b8 !important;
+  white-space: nowrap !important;
+}
+
+.helper-toolbar-group-buttons {
+  display: flex !important;
+  align-items: center !important;
+  gap: 4px !important;
 }
 
 .helper-flying-header-btn {
@@ -239,24 +265,5 @@
 
 .helper-flying-shortcut-btn:active {
   transform: translateY(1px) !important;
-}
-
-/* Universal Selection Transformations Bar */
-.helper-selection-floating-bar {
-  position: fixed !important;
-  z-index: 2147483647 !important;
-  background-color: #1e293b !important;
-  border: 1px solid #334155 !important;
-  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.35) !important;
-  border-radius: 8px !important;
-  padding: 5px 8px !important;
-  display: flex !important;
-  align-items: center !important;
-  gap: 6px !important;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
-  pointer-events: auto !important;
-  user-select: none !important;
-  -webkit-user-select: none !important;
-  animation: helper-bar-fadein 0.15s ease-out !important;
 }
 

@@ -9,7 +9,6 @@ console.log('--- TESTING POPUP LOGIC & HTML INTEGRITY ---');
 const popupHtml = fs.readFileSync(path.join(__dirname, '../popup/popup.html'), 'utf8');
 
 const requiredIds = [
-  'sync-status-indicator',
   'site-status-badge',
   'site-status-text',
   'current-site-host',

@@ -103,15 +103,10 @@ async function runBrowserVerification() {
   const bodyBg = await evalInSettings(`window.getComputedStyle(document.body).backgroundColor`);
   console.log('[PASS] Computed background color in dark theme:', bodyBg);
 
-  // 2. Verify Storage Setup Banner is displayed on load
-  const bannerVisible = await evalInSettings(`
-    (() => {
-      const banner = document.getElementById('storage-setup-banner');
-      return banner && window.getComputedStyle(banner).display !== 'none';
-    })()
-  `);
-  assert.strictEqual(bannerVisible, true, 'Storage setup banner must be visible on first load');
-  console.log('[PASS] Storage setup banner is displayed on load with Store & Select buttons.');
+  // 2. Verify Storage Setup Banner is removed
+  const bannerExists = await evalInSettings(`Boolean(document.getElementById('storage-setup-banner'))`);
+  assert.strictEqual(bannerExists, false, 'Storage setup banner must be removed');
+  console.log('[PASS] Storage setup banner is completely removed as requested.');
 
   // 3. Switch to Snippets Tab
   await evalInSettings(`document.getElementById('nav-snippets').click()`);
