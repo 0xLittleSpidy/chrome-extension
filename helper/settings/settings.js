@@ -27,13 +27,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   const whitelistCount = document.getElementById('whitelist-count');
   const whitelistEmpty = document.getElementById('whitelist-empty');
 
-  // Blacklist elements
-  const addBlacklistForm = document.getElementById('add-blacklist-form');
-  const blacklistInput = document.getElementById('blacklist-input');
-  const blacklistList = document.getElementById('blacklist-list');
-  const blacklistCount = document.getElementById('blacklist-count');
-  const blacklistEmpty = document.getElementById('blacklist-empty');
-
   // Snippet elements
   const snippetForm = document.getElementById('snippet-form');
   const snippetFormTitle = document.getElementById('snippet-form-title');
@@ -41,6 +34,25 @@ document.addEventListener('DOMContentLoaded', async () => {
   const snippetHeadingInput = document.getElementById('snippet-heading');
   const snippetCategorySelect = document.getElementById('snippet-category');
   const snippetAddCategoryBtn = document.getElementById('snippet-add-category-btn');
+  const snippetCategoryActionsBtn = document.getElementById('snippet-category-actions-btn');
+  const categoryActionsMenu = document.getElementById('category-actions-menu');
+  const actionRenameCategoryBtn = document.getElementById('action-rename-category-btn');
+  const actionDeleteCategoryBtn = document.getElementById('action-delete-category-btn');
+  const modalRenameCategory = document.getElementById('modal-rename-category');
+  const modalRenameOldName = document.getElementById('modal-rename-old-name');
+  const modalRenameInput = document.getElementById('modal-rename-input');
+  const modalRenameError = document.getElementById('modal-rename-error');
+  const modalRenameCloseBtn = document.getElementById('modal-rename-close-btn');
+  const modalRenameCancelBtn = document.getElementById('modal-rename-cancel-btn');
+  const modalRenameSaveBtn = document.getElementById('modal-rename-save-btn');
+  const modalDeleteCategory = document.getElementById('modal-delete-category');
+  const modalDeleteTargetName = document.getElementById('modal-delete-target-name');
+  const modalDeleteSnippetCount = document.getElementById('modal-delete-snippet-count');
+  const deleteOptReassign = document.getElementById('delete-opt-reassign');
+  const deleteOptPurge = document.getElementById('delete-opt-purge');
+  const modalDeleteCloseBtn = document.getElementById('modal-delete-close-btn');
+  const modalDeleteCancelBtn = document.getElementById('modal-delete-cancel-btn');
+  const modalDeleteConfirmBtn = document.getElementById('modal-delete-confirm-btn');
   const settingsCategoryFilter = document.getElementById('settings-category-filter');
   const snippetDescriptionInput = document.getElementById('snippet-description');
   const snippetDescriptionLabel = document.getElementById('snippet-description-label');
@@ -272,7 +284,6 @@ document.addEventListener('DOMContentLoaded', async () => {
           sidebarImportInput.value = '';
           await Promise.all([
             renderWhitelist(),
-            renderBlacklist(),
             renderSnippets(),
             renderRules(),
             renderShortcuts(),
@@ -390,66 +401,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     renderWhitelist();
   });
 
-  // --- Blacklist Management ---
-  async function renderBlacklist() {
-    if (!blacklistCount || !blacklistList) return;
-    const list = await StorageManager.getBlacklist();
-    blacklistCount.textContent = `${list.length} item${list.length === 1 ? '' : 's'}`;
-
-    blacklistList.innerHTML = '';
-    if (list.length === 0) {
-      if (blacklistEmpty) blacklistEmpty.style.display = 'block';
-    } else {
-      if (blacklistEmpty) blacklistEmpty.style.display = 'none';
-
-      list.forEach((entry) => {
-        const item = document.createElement('div');
-        item.className = 'list-item';
-
-        const title = document.createElement('span');
-        title.className = 'list-item-title';
-        title.textContent = entry;
-
-        const removeBtn = document.createElement('button');
-        removeBtn.className = 'btn btn-danger btn-sm';
-        removeBtn.textContent = 'Delete';
-        removeBtn.addEventListener('click', async () => {
-          await StorageManager.removeBlacklist(entry);
-          showToast(`Removed "${entry}" from blacklist`);
-          renderBlacklist();
-        });
-
-        item.appendChild(title);
-        item.appendChild(removeBtn);
-        blacklistList.appendChild(item);
-      });
-    }
-  }
-
-  if (addBlacklistForm && blacklistInput) {
-    addBlacklistForm.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const raw = blacklistInput.value.trim();
-      const normalized = AllowlistUtils.normalizePattern(raw) || raw;
-
-      if (!normalized) {
-        showToast('Please enter a valid path or URL', 'error');
-        return;
-      }
-
-      const current = await StorageManager.getBlacklist();
-      if (current.includes(normalized)) {
-        showToast('URL/Path is already in the blacklist', 'error');
-        return;
-      }
-
-      await StorageManager.addBlacklist(normalized);
-      blacklistInput.value = '';
-      showToast(`Added "${normalized}" to blacklist`);
-      renderBlacklist();
-    });
-  }
-
   // --- Multi-Answer & Markdown Snippet Management ---
   function updateLiveMarkdownPreview() {
     if (snippetMarkdownPreview && snippetDescriptionInput) {
@@ -544,6 +495,138 @@ document.addEventListener('DOMContentLoaded', async () => {
         await renderSnippets();
         if (snippetCategorySelect) snippetCategorySelect.value = name.trim();
       }
+    });
+  }
+
+  // Category Actions Dropdown
+  if (snippetCategoryActionsBtn && categoryActionsMenu) {
+    snippetCategoryActionsBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const isVisible = categoryActionsMenu.style.display === 'flex';
+      if (isVisible) {
+        categoryActionsMenu.style.display = 'none';
+      } else {
+        const currentCat = snippetCategorySelect ? snippetCategorySelect.value : 'General';
+        const isGeneral = !currentCat || currentCat === 'General';
+        if (actionRenameCategoryBtn) {
+          actionRenameCategoryBtn.disabled = isGeneral;
+          actionRenameCategoryBtn.title = isGeneral ? "Cannot rename default 'General' category" : '';
+        }
+        if (actionDeleteCategoryBtn) {
+          actionDeleteCategoryBtn.disabled = isGeneral;
+          actionDeleteCategoryBtn.title = isGeneral ? "Cannot delete default 'General' category" : '';
+        }
+        categoryActionsMenu.style.display = 'flex';
+      }
+    });
+
+    document.addEventListener('click', (e) => {
+      if (!categoryActionsMenu.contains(e.target) && e.target !== snippetCategoryActionsBtn) {
+        categoryActionsMenu.style.display = 'none';
+      }
+    });
+  }
+
+  // Rename Category Modal
+  if (actionRenameCategoryBtn && modalRenameCategory) {
+    actionRenameCategoryBtn.addEventListener('click', () => {
+      if (categoryActionsMenu) categoryActionsMenu.style.display = 'none';
+      const currentCat = snippetCategorySelect ? snippetCategorySelect.value : 'General';
+      if (!currentCat || currentCat === 'General') return;
+
+      if (modalRenameOldName) modalRenameOldName.textContent = currentCat;
+      if (modalRenameInput) {
+        modalRenameInput.value = currentCat;
+        modalRenameInput.dataset.original = currentCat;
+      }
+      if (modalRenameError) modalRenameError.style.display = 'none';
+      modalRenameCategory.style.display = 'flex';
+      if (modalRenameInput) modalRenameInput.focus();
+    });
+  }
+
+  function closeRenameModal() {
+    if (modalRenameCategory) modalRenameCategory.style.display = 'none';
+    if (modalRenameError) modalRenameError.style.display = 'none';
+  }
+
+  if (modalRenameCloseBtn) modalRenameCloseBtn.addEventListener('click', closeRenameModal);
+  if (modalRenameCancelBtn) modalRenameCancelBtn.addEventListener('click', closeRenameModal);
+
+  if (modalRenameSaveBtn && modalRenameInput) {
+    modalRenameSaveBtn.addEventListener('click', async () => {
+      const original = modalRenameInput.dataset.original || (snippetCategorySelect ? snippetCategorySelect.value : '');
+      const newName = modalRenameInput.value.trim();
+
+      if (!newName) {
+        if (modalRenameError) {
+          modalRenameError.textContent = 'Category name cannot be empty';
+          modalRenameError.style.display = 'block';
+        }
+        return;
+      }
+
+      if (newName === original) {
+        closeRenameModal();
+        return;
+      }
+
+      const existingCategories = await StorageManager.getCategories();
+      if (existingCategories.some(c => c.toLowerCase() === newName.toLowerCase() && c.toLowerCase() !== original.toLowerCase())) {
+        if (modalRenameError) {
+          modalRenameError.textContent = `A category named "${newName}" already exists`;
+          modalRenameError.style.display = 'block';
+        }
+        return;
+      }
+
+      await StorageManager.renameCategory(original, newName);
+      closeRenameModal();
+      showToast(`Category renamed to "${newName}"`);
+      await renderSnippets();
+      if (snippetCategorySelect) snippetCategorySelect.value = newName;
+    });
+  }
+
+  // Delete Category Modal
+  if (actionDeleteCategoryBtn && modalDeleteCategory) {
+    actionDeleteCategoryBtn.addEventListener('click', async () => {
+      if (categoryActionsMenu) categoryActionsMenu.style.display = 'none';
+      const currentCat = snippetCategorySelect ? snippetCategorySelect.value : 'General';
+      if (!currentCat || currentCat === 'General') return;
+
+      const allSnippets = await StorageManager.getSnippets();
+      const snippetCount = allSnippets.filter(s => s.category === currentCat).length;
+
+      if (modalDeleteTargetName) modalDeleteTargetName.textContent = currentCat;
+      if (modalDeleteSnippetCount) modalDeleteSnippetCount.textContent = snippetCount;
+      if (deleteOptReassign) deleteOptReassign.checked = true;
+      modalDeleteCategory.dataset.targetCategory = currentCat;
+      modalDeleteCategory.style.display = 'flex';
+    });
+  }
+
+  function closeDeleteModal() {
+    if (modalDeleteCategory) modalDeleteCategory.style.display = 'none';
+  }
+
+  if (modalDeleteCloseBtn) modalDeleteCloseBtn.addEventListener('click', closeDeleteModal);
+  if (modalDeleteCancelBtn) modalDeleteCancelBtn.addEventListener('click', closeDeleteModal);
+
+  if (modalDeleteConfirmBtn && modalDeleteCategory) {
+    modalDeleteConfirmBtn.addEventListener('click', async () => {
+      const targetCat = modalDeleteCategory.dataset.targetCategory || (snippetCategorySelect ? snippetCategorySelect.value : '');
+      if (!targetCat || targetCat === 'General') {
+        closeDeleteModal();
+        return;
+      }
+
+      const reassign = deleteOptReassign ? deleteOptReassign.checked : true;
+      await StorageManager.deleteCategory(targetCat, reassign);
+      closeDeleteModal();
+      showToast(`Category "${targetCat}" deleted`);
+      await renderSnippets();
+      if (snippetCategorySelect) snippetCategorySelect.value = 'General';
     });
   }
 
@@ -1304,7 +1387,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Listen for storage changes from other views
   chrome.storage.onChanged.addListener(() => {
     renderWhitelist();
-    renderBlacklist();
     renderSnippets();
     renderRules();
     renderShortcuts();
@@ -1318,7 +1400,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   updateLiveMarkdownPreview();
   await Promise.all([
     renderWhitelist(),
-    renderBlacklist(),
     renderSnippets(),
     renderRules(),
     renderShortcuts(),

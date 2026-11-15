@@ -284,53 +284,37 @@ if (chrome.contextMenus && chrome.contextMenus.onClicked) {
 }
 
 /**
- * Updates action badge for a tab according to whether its URL is allowlisted,
- * not blacklisted, and whether Replacer switch is enabled.
+ * Updates action badge for a tab according to whether its URL is allowlisted
+ * and whether any site feature is enabled.
  */
 async function updateBadgeForTab(tabId, url) {
   if (!tabId || !url) return;
 
   try {
-    const [allowlist, blacklist] = await Promise.all([
-      StorageManager.getAllowlist(),
-      StorageManager.getBlacklist()
-    ]);
-
-    // Check if blacklisted first (blacklist overrides allowlist)
-    if (AllowlistUtils.isUrlBlacklisted(url, blacklist)) {
-      await chrome.action.setBadgeText({ tabId, text: '' });
-      await chrome.action.setTitle({
-        tabId,
-        title: 'Helper: Inactive (Path is blacklisted)'
-      });
-      return;
-    }
-
+    const allowlist = await StorageManager.getAllowlist();
     const isAllowed = AllowlistUtils.isUrlAllowed(url, allowlist);
 
     if (isAllowed) {
       const matchedPattern = AllowlistUtils.getMatchingPattern(url, allowlist);
       const siteKey = matchedPattern || AllowlistUtils.getSiteIdentifier(url);
-      const isReplacerOn = await StorageManager.getSiteReplacerEnabled(siteKey);
-      const isStorageOn = await StorageManager.getSiteStorageEnabled(siteKey);
+      const [isReplacerOn, isStorageOn, isShortcutsOn, isTransformOn, isUnwantedHeadersOn] = await Promise.all([
+        StorageManager.getSiteReplacerEnabled(siteKey),
+        StorageManager.getSiteStorageEnabled(siteKey),
+        StorageManager.getSiteShortcutsEnabled(siteKey),
+        StorageManager.getSiteTransformEnabled(siteKey),
+        StorageManager.getSiteUnwantedHeadersEnabled(siteKey)
+      ]);
 
-      if (isReplacerOn || isStorageOn) {
-        // At least one function is active on this site: badge must show ON
+      const isAnyActive = isReplacerOn || isStorageOn || isShortcutsOn || isTransformOn || isUnwantedHeadersOn;
+
+      if (isAnyActive) {
         await chrome.action.setBadgeText({ tabId, text: 'ON' });
         await chrome.action.setBadgeBackgroundColor({ tabId, color: BADGE_COLOR_ACTIVE });
-
-        let titleText = 'Helper: Active on this site';
-        if (!isReplacerOn && isStorageOn) {
-          titleText = 'Helper: Active (Replacer paused, Snippets enabled)';
-        } else if (isReplacerOn && !isStorageOn) {
-          titleText = 'Helper: Active (Storage paused, Replacer enabled)';
-        }
         await chrome.action.setTitle({
           tabId,
-          title: titleText
+          title: 'Helper: Active on this site'
         });
       } else {
-        // ONLY when all functions on the site are paused
         await chrome.action.setBadgeText({ tabId, text: 'PAUSE' });
         await chrome.action.setBadgeBackgroundColor({ tabId, color: BADGE_COLOR_PAUSED });
         await chrome.action.setTitle({
@@ -371,7 +355,7 @@ chrome.tabs.onActivated.addListener(async (activeInfo) => {
 
 // Update tabs and menus when storage changes
 chrome.storage.onChanged.addListener(async (changes, areaName) => {
-  if (changes.allowlist || changes.blacklist || changes.site_replacer_state || changes.site_storage_state) {
+  if (changes.allowlist || changes.site_replacer_state || changes.site_storage_state || changes.site_shortcuts_state || changes.site_transform_state || changes.site_unwanted_headers_state) {
     try {
       const tabs = await chrome.tabs.query({});
       for (const tab of tabs) {

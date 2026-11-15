@@ -393,7 +393,21 @@ async function runBrowserQA() {
   const storageBannerAbsent = await evalInSettings(`Boolean(document.getElementById('storage-setup-banner')) === false`);
   assert.strictEqual(storageBannerAbsent, true, 'Storage setup banner must be absent');
 
-  console.log('[PASS] Settings page: default dark theme, import/export buttons, and clean sidebar verified.');
+  const blacklistAbsentInSettings = await evalInSettings(`
+    Boolean(document.getElementById('nav-blacklist')) === false &&
+    Boolean(document.getElementById('tab-blacklist')) === false
+  `);
+  assert.strictEqual(blacklistAbsentInSettings, true, 'Blacklist navigation and tab must be removed from settings');
+
+  const categoryActionsVerified = await evalInSettings(`
+    Boolean(document.getElementById('snippet-category-actions-btn')) &&
+    Boolean(document.getElementById('category-actions-menu')) &&
+    Boolean(document.getElementById('modal-rename-category')) &&
+    Boolean(document.getElementById('modal-delete-category'))
+  `);
+  assert.strictEqual(categoryActionsVerified, true, 'Category actions button, dropdown menu, and modals must exist in settings');
+
+  console.log('[PASS] Settings page: default dark theme, import/export buttons, category actions, and blacklist removal verified.');
 
   // Test Header Cleaner Console & Interactive Test Cleaner
   console.log('[QA] Testing Header Cleaner Console and Interactive Test Cleaner...');

@@ -30,9 +30,6 @@
         <button class="nav-btn active" data-tab="tab-whitelist" id="nav-whitelist">
           <span class="nav-label">Whitelist</span>
         </button>
-        <button class="nav-btn" data-tab="tab-blacklist" id="nav-blacklist">
-          <span class="nav-label">Blacklist</span>
-        </button>
         <button class="nav-btn" data-tab="tab-snippets" id="nav-snippets">
           <span class="nav-label">Saved Snippets</span>
         </button>
@@ -109,48 +106,6 @@
         </div>
       </section>
 
-      <!-- Tab: Blacklist -->
-      <section id="tab-blacklist" class="tab-panel">
-        <header class="section-header">
-          <div>
-            <h2 class="section-title">Blacklist Management</h2>
-            <p class="section-desc">Manage blocked websites, paths, or URLs (e.g. /admin/*, example.com/checkout). Blacklisted paths completely disable Helper even if the parent domain is whitelisted.</p>
-          </div>
-        </header>
-
-        <div class="card">
-          <h3 class="card-title">Add Path or URL to Blacklist</h3>
-          <form id="add-blacklist-form" class="form-row">
-            <input 
-              type="text" 
-              id="blacklist-input" 
-              class="form-input" 
-              placeholder="e.g. /admin/*, example.com/secret, or *.internal.org" 
-              autocomplete="off" 
-              spellcheck="false" 
-              required
-            />
-            <button type="submit" class="btn btn-primary">Add to Blacklist</button>
-          </form>
-        </div>
-
-        <div class="card">
-          <div class="card-header-flex">
-            <h3 class="card-title">Blacklisted URLs & Paths</h3>
-            <span id="blacklist-count" class="badge">0 items</span>
-          </div>
-
-          <div id="blacklist-list" class="items-list">
-            <!-- Dynamically populated -->
-          </div>
-
-          <div id="blacklist-empty" class="empty-state">
-            <p class="empty-title">No URLs in blacklist</p>
-            <p class="empty-desc">Add paths or URLs above to block Helper on sensitive routes.</p>
-          </div>
-        </div>
-      </section>
-
       <!-- Tab 2: Saved Snippets -->
       <section id="tab-snippets" class="tab-panel">
         <header class="section-header">
@@ -179,9 +134,14 @@
 
               <div class="form-group">
                 <label for="snippet-category" class="form-label">Category</label>
-                <div style="display: flex; gap: 8px;">
+                <div style="display: flex; gap: 8px; position: relative;">
                   <select id="snippet-category" class="form-input" style="flex: 1;"></select>
                   <button type="button" id="snippet-add-category-btn" class="btn btn-secondary btn-sm">+ New Category</button>
+                  <button type="button" id="snippet-category-actions-btn" class="btn btn-secondary btn-sm" aria-label="Category Actions" title="Category Actions">...</button>
+                  <div id="category-actions-menu" class="category-actions-dropdown" style="display: none;">
+                    <button type="button" id="action-rename-category-btn" class="dropdown-item">Rename Category</button>
+                    <button type="button" id="action-delete-category-btn" class="dropdown-item dropdown-item-danger">Delete Category</button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -437,6 +397,53 @@
         </div>
       </section>
     </main>
+  </div>
+
+  <!-- Rename Category Modal -->
+  <div id="modal-rename-category" class="modal-backdrop" style="display: none;">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 class="modal-title">Rename Category</h3>
+        <button type="button" id="modal-rename-close-btn" class="modal-close-btn" aria-label="Close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p class="modal-description">Enter a new name for category "<span id="modal-rename-old-name"></span>":</p>
+        <input type="text" id="modal-rename-input" class="form-input" placeholder="New Category Name" autocomplete="off" />
+        <div id="modal-rename-error" class="modal-error-msg" style="display: none;"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" id="modal-rename-cancel-btn" class="btn btn-secondary">Cancel</button>
+        <button type="button" id="modal-rename-save-btn" class="btn btn-primary">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Delete Category Modal -->
+  <div id="modal-delete-category" class="modal-backdrop" style="display: none;">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 class="modal-title">Delete Category</h3>
+        <button type="button" id="modal-delete-close-btn" class="modal-close-btn" aria-label="Close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p class="modal-description">Are you sure you want to delete category "<span id="modal-delete-target-name"></span>"?</p>
+        <p class="modal-subtext">There are <span id="modal-delete-snippet-count">0</span> snippets in this category.</p>
+        <div class="modal-options-group">
+          <label class="modal-radio-label">
+            <input type="radio" name="delete-category-option" id="delete-opt-reassign" value="reassign" checked />
+            <span>Reassign all snippets in this category to 'General'</span>
+          </label>
+          <label class="modal-radio-label">
+            <input type="radio" name="delete-category-option" id="delete-opt-purge" value="purge" />
+            <span>Permanently delete all snippets in this category</span>
+          </label>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" id="modal-delete-cancel-btn" class="btn btn-secondary">Cancel</button>
+        <button type="button" id="modal-delete-confirm-btn" class="btn btn-danger">Delete Category</button>
+      </div>
+    </div>
   </div>
 
   <script src="../lib/allowlist-utils.js"></script>

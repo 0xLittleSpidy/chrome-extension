@@ -59,10 +59,11 @@ async function runTest() {
   await new Promise(r => server.listen(PORT, r));
   console.log(`[Test Server] Running at http://127.0.0.1:${PORT}/test-page.html`);
 
+  const CDP_PORT = 9555;
   const userDataDir = `/tmp/cft-profile-${Date.now()}`;
   const chromeProcess = spawn(CHROME_BIN, [
     '--headless=new',
-    '--remote-debugging-port=9222',
+    `--remote-debugging-port=${CDP_PORT}`,
     '--no-sandbox',
     `--load-extension=${EXT_DIR}`,
     `--disable-extensions-except=${EXT_DIR}`,
@@ -82,14 +83,16 @@ async function runTest() {
   process.on('exit', cleanup);
   process.on('SIGINT', () => { cleanup(); process.exit(1); });
 
-  // Wait for browser to initialize
-  await new Promise(r => setTimeout(r, 1500));
-
-  const targets = await fetch('http://127.0.0.1:9222/json').then(r => r.json());
-  console.log('[Browser] Running targets:', targets.map(t => ({ type: t.type, title: t.title, url: t.url })));
-
-  // Locate our background service worker dynamically
-  const swTarget = targets.find(t => t.url.endsWith('/background.js') && !t.url.includes('glbjnfimcajjenihimblfaponejbkoph'));
+  let targets = [];
+  let swTarget = null;
+  for (let i = 0; i < 30; i++) {
+    try {
+      targets = await fetch(`http://127.0.0.1:${CDP_PORT}/json`).then(r => r.json());
+      swTarget = targets.find(t => t.url && t.url.endsWith('/background.js') && !t.url.includes('glbjnfimcajjenihimblfaponejbkoph'));
+      if (swTarget) break;
+    } catch (e) {}
+    await new Promise(r => setTimeout(r, 400));
+  }
   assert(swTarget, 'Background service worker must be loaded and running');
   console.log('[PASS] Background service worker active:', swTarget.url);
 
@@ -114,10 +117,10 @@ async function runTest() {
   }
 
   // 1. Verify initial allowlist is empty by default
-  const initialStorage = await evalInSW(`chrome.storage.sync.get(['allowlist'])`);
-  console.log('[Storage] Initial state:', initialStorage);
-  assert(Array.isArray(initialStorage.allowlist), 'allowlist must be an array');
-  assert.strictEqual(initialStorage.allowlist.length, 0, 'Allowlist must be empty by default');
+  const initialAllowlist = await evalInSW(`StorageManager.getAllowlist()`);
+  console.log('[Storage] Initial allowlist:', initialAllowlist);
+  assert(Array.isArray(initialAllowlist), 'allowlist must be an array');
+  assert.strictEqual(initialAllowlist.length, 0, 'Allowlist must be empty by default');
   console.log('[PASS] Allowlist is empty by default (extension only runs on approved sites).');
 
   // 2. Open test page
@@ -389,9 +392,15 @@ async function runTest() {
   `);
   await new Promise(r => setTimeout(r, 600));
 
-  const hostWhenPaused = await evalInPage(`!!document.getElementById('is-highlighter-extension-root')`);
-  assert.strictEqual(hostWhenPaused, false, 'Overlays must be deactivated when replacer switch is OFF on active site');
-  console.log('[PASS] Replacer switch temporarily deactivates overlays on whitelisted site.');
+  const marksWhenPaused = await evalInPage(`
+    (() => {
+      const host = document.getElementById('is-highlighter-extension-root');
+      if (!host || !host.shadowRoot) return 0;
+      return host.shadowRoot.querySelectorAll('.is-highlight-mark').length;
+    })()
+  `);
+  assert.strictEqual(marksWhenPaused, 0, 'Word replacement highlights must be cleared when replacer switch is OFF');
+  console.log('[PASS] Replacer switch temporarily clears replacement highlights while keeping extension features accessible.');
 
   // Verify badge shows ON (not PAUSE) when only replacer is paused
   const badgeWhenReplacerPaused = await evalInSW(`
@@ -631,71 +640,85 @@ async function runTest() {
   assert(!redColorRedactResult.val.includes('[redacted]\n[redacted]'), 'Must not create extra redact on next line');
   console.log('[PASS] Red Color Redact transforms selected text without modifying or adding redact to next line.');
 
-  // 14f. Test Blacklist Override
-  console.log('[Blacklist] Testing blacklist override on allowlisted site...');
+  // 14f. Test Replacer Disabling & Toolbar Decoupling
+  console.log('[Toolbar Decoupling] Testing replacer pause while toolbar features remain active...');
   await evalInSW(`
-    (async () => {
-      await StorageManager.addToBlacklist('127.0.0.1:${PORT}/*');
-    })()
+    new Promise(resolve => {
+      chrome.storage.sync.set({
+        site_replacer_state: { '127.0.0.1:${PORT}': false }
+      }, resolve);
+    })
   `);
   await new Promise(r => setTimeout(r, 500));
 
-  const hostWhenBlacklisted = await evalInPage(`!!document.getElementById('is-highlighter-extension-root')`);
-  assert.strictEqual(hostWhenBlacklisted, false, 'Host root must be removed when URL is blacklisted');
+  const hostStillActive = await evalInPage(`!!document.getElementById('is-highlighter-extension-root')`);
+  assert.strictEqual(hostStillActive, true, 'Host root must remain active for shortcuts/transform even when replacer is paused');
 
-  const badgeWhenBlacklisted = await evalInSW(`
-    (async () => {
-      const [tab] = await chrome.tabs.query({ url: 'http://127.0.0.1:${PORT}/*' });
-      if (!tab) return 'no-tab';
-      return await chrome.action.getBadgeText({ tabId: tab.id });
+  // Verify highlights are hidden when replacer is paused
+  const highlightsCountWhenPaused = await evalInPage(`
+    (() => {
+      const host = document.getElementById('is-highlighter-extension-root');
+      if (!host || !host.shadowRoot) return 0;
+      return host.shadowRoot.querySelectorAll('.is-highlight-mark').length;
     })()
   `);
-  assert.strictEqual(badgeWhenBlacklisted, '', 'Badge must be empty/off when page is blacklisted');
-  console.log('[PASS] Blacklist pattern overrides allowlist and deactivates extension on blacklisted path.');
+  assert.strictEqual(highlightsCountWhenPaused, 0, 'Word replacement highlights must be cleared when replacer is paused');
+  console.log('[PASS] Word replacer paused without deactivating extension.');
 
-  // Restore by removing from blacklist
+  // Test toolbar hidden when all toolbar switches (Transform, Shortcuts, Unwanted Headers) are disabled
+  console.log('[Toolbar Decoupling] Testing flying toolbar suppression when all toolbar groups are disabled...');
   await evalInSW(`
-    (async () => {
-      await StorageManager.removeFromBlacklist('127.0.0.1:${PORT}/*');
+    new Promise(resolve => {
+      chrome.storage.sync.set({
+        site_replacer_state: { '127.0.0.1:${PORT}': true },
+        site_transform_state: { '127.0.0.1:${PORT}': false },
+        site_shortcuts_state: { '127.0.0.1:${PORT}': false },
+        site_unwanted_headers_state: { '127.0.0.1:${PORT}': false }
+      }, resolve);
+    })
+  `);
+  await new Promise(r => setTimeout(r, 600));
+
+  const toolbarHiddenOnSelection = await evalInPage(`
+    (() => {
+      const ta = document.getElementById('textarea-standard');
+      ta.focus();
+      ta.setSelectionRange(0, 10);
+      document.dispatchEvent(new Event('selectionchange'));
+      const host = document.getElementById('is-highlighter-extension-root');
+      if (!host || !host.shadowRoot) return true;
+      const tb = host.shadowRoot.querySelector('.helper-flying-toolbar');
+      return !tb || window.getComputedStyle(tb).display === 'none';
     })()
   `);
-  await new Promise(r => setTimeout(r, 500));
-  const hostRestored = await evalInPage(`!!document.getElementById('is-highlighter-extension-root')`);
-  assert.strictEqual(hostRestored, true, 'Extension must reactivate when removed from blacklist');
-  console.log('[PASS] Extension reactivates when blacklist pattern is removed.');
+  assert.strictEqual(toolbarHiddenOnSelection, true, 'Toolbar must not show when Transform, Shortcuts, and Unwanted Headers are all paused');
+  console.log('[PASS] Flying toolbar is completely suppressed when all toolbar features are disabled.');
 
-  // 15. Test both switches disabled (multi-switch status)
-  console.log('[Multi-Switch] Disabling both replacer and storage on site...');
+  // 15. Test all switches disabled (multi-switch status)
+  console.log('[Multi-Switch] Disabling all site switches to verify PAUSE badge...');
   await evalInSW(`
     new Promise(resolve => {
       chrome.storage.sync.set({
         site_replacer_state: { '127.0.0.1:${PORT}': false },
-        site_storage_state: { '127.0.0.1:${PORT}': false }
+        site_storage_state: { '127.0.0.1:${PORT}': false },
+        site_shortcuts_state: { '127.0.0.1:${PORT}': false },
+        site_transform_state: { '127.0.0.1:${PORT}': false },
+        site_unwanted_headers_state: { '127.0.0.1:${PORT}': false }
       }, resolve);
     })
   `);
-  await new Promise(r => setTimeout(r, 400));
-  const swState = await evalInSW(`
-    (async () => {
-      const rep = await StorageManager.getSiteReplacerEnabled('127.0.0.1:${PORT}');
-      const stor = await StorageManager.getSiteStorageEnabled('127.0.0.1:${PORT}');
-      return { rep, stor };
-    })()
-  `);
-  assert.strictEqual(swState.rep, false);
-  assert.strictEqual(swState.stor, false);
-  console.log('[PASS] Both replacer and storage switches independently disabled on site.');
+  await new Promise(r => setTimeout(r, 600));
 
-  // Verify badge shows PAUSE when BOTH features are disabled
-  const badgeWhenBothPaused = await evalInSW(`
+  // Verify badge shows PAUSE when ALL features are disabled
+  const badgeWhenAllPaused = await evalInSW(`
     (async () => {
       const [tab] = await chrome.tabs.query({ url: 'http://127.0.0.1:${PORT}/*' });
       if (!tab) return 'no-tab';
       return await chrome.action.getBadgeText({ tabId: tab.id });
     })()
   `);
-  assert.strictEqual(badgeWhenBothPaused, 'PAUSE', 'Badge must show PAUSE only when all features are disabled');
-  console.log('[PASS] Badge shows PAUSE when both replacer and storage are paused.');
+  assert.strictEqual(badgeWhenAllPaused, 'PAUSE', 'Badge must show PAUSE when all features are disabled');
+  console.log('[PASS] Badge shows PAUSE when all features on the site are paused.');
 
   // 16. Test allowlist removal deactivation
   console.log('[Allowlist] Removing site from allowlist in storage...');

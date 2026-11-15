@@ -15,7 +15,10 @@
   let activeRules = [];
   let activeShortcuts = [];
   let activeUnwantedHeaders = [];
+  let isReplacerEnabledOnSite = true;
   let isShortcutsEnabledOnSite = true;
+  let isTransformEnabledOnSite = true;
+  let isUnwantedHeadersEnabledOnSite = true;
   let shadowRoot = null;
   let hostElement = null;
   let floatingTooltip = null;
@@ -35,32 +38,26 @@
   const SUPPORTED_INPUT_TYPES = new Set(['text', 'search', 'url', 'email', 'tel', '']);
 
   /**
-   * Initializes or tears down the extension on this page based on whitelist,
-   * blacklist, and per-site switch statuses.
+   * Initializes or tears down the extension on this page based on whitelist
+   * and per-site switch statuses.
    */
   async function checkAllowlistAndInitialize() {
     try {
       const data = await chrome.storage.sync.get([
         'allowlist',
-        'blacklist',
         'site_replacer_state',
         'site_shortcuts_state',
+        'site_transform_state',
+        'site_unwanted_headers_state',
         'replacer_rules',
         'shortcuts',
         'unwanted_headers'
       ]);
       const allowlist = Array.isArray(data.allowlist) ? data.allowlist : [];
-      const blacklist = Array.isArray(data.blacklist) ? data.blacklist : [];
       const siteReplacerState = data.site_replacer_state || {};
       const siteShortcutsState = data.site_shortcuts_state || {};
-
-      // 1. Blacklist check overrides everything
-      if (AllowlistUtils.isUrlBlacklisted(window.location.href, blacklist)) {
-        if (isEnabledOnThisPage) {
-          deactivateExtension();
-        }
-        return;
-      }
+      const siteTransformState = data.site_transform_state || {};
+      const siteUnwantedHeadersState = data.site_unwanted_headers_state || {};
 
       activeRules = Array.isArray(data.replacer_rules) && data.replacer_rules.length > 0
         ? data.replacer_rules
@@ -82,10 +79,13 @@
       const allowed = AllowlistUtils.isUrlAllowed(window.location.href, allowlist);
       const matchedPattern = AllowlistUtils.getMatchingPattern(window.location.href, allowlist);
       const siteKey = matchedPattern || AllowlistUtils.getSiteIdentifier(window.location.href);
-      const replacerEnabledOnSite = siteReplacerState[siteKey] !== false;
-      isShortcutsEnabledOnSite = siteShortcutsState[siteKey] !== false;
 
-      const shouldBeActive = Boolean(allowed && replacerEnabledOnSite);
+      isReplacerEnabledOnSite = siteReplacerState[siteKey] !== false;
+      isShortcutsEnabledOnSite = siteShortcutsState[siteKey] !== false;
+      isTransformEnabledOnSite = siteTransformState[siteKey] !== false;
+      isUnwantedHeadersEnabledOnSite = siteUnwantedHeadersState[siteKey] !== false;
+
+      const shouldBeActive = Boolean(allowed && (isReplacerEnabledOnSite || isShortcutsEnabledOnSite || isTransformEnabledOnSite || isUnwantedHeadersEnabledOnSite));
 
       if (shouldBeActive && !isEnabledOnThisPage) {
         activateExtension();
@@ -183,40 +183,42 @@
     flyingToolbar.innerHTML = '';
 
     // Group 1: Transform
-    const transformGroup = document.createElement('div');
-    transformGroup.className = 'helper-toolbar-group helper-toolbar-group-transform';
+    if (isTransformEnabledOnSite) {
+      const transformGroup = document.createElement('div');
+      transformGroup.className = 'helper-toolbar-group helper-toolbar-group-transform';
 
-    const transformLabel = document.createElement('span');
-    transformLabel.className = 'helper-toolbar-group-label';
-    transformLabel.textContent = 'Transform';
-    transformGroup.appendChild(transformLabel);
+      const transformLabel = document.createElement('span');
+      transformLabel.className = 'helper-toolbar-group-label';
+      transformLabel.textContent = 'Transform';
+      transformGroup.appendChild(transformLabel);
 
-    const transformBtnsContainer = document.createElement('div');
-    transformBtnsContainer.className = 'helper-toolbar-group-buttons';
+      const transformBtnsContainer = document.createElement('div');
+      transformBtnsContainer.className = 'helper-toolbar-group-buttons';
 
-    const transformConfigs = [
-      { text: 'Truncate', action: 'truncate', isRed: false },
-      { text: 'Redact', action: 'redact', isRed: false },
-      { text: 'Red Color Truncate', action: 'red-color-truncate', isRed: true },
-      { text: 'Red Color Redact', action: 'red-color-redact', isRed: true }
-    ];
+      const transformConfigs = [
+        { text: 'Truncate', action: 'truncate', isRed: false },
+        { text: 'Redact', action: 'redact', isRed: false },
+        { text: 'Red Color Truncate', action: 'red-color-truncate', isRed: true },
+        { text: 'Red Color Redact', action: 'red-color-redact', isRed: true }
+      ];
 
-    transformConfigs.forEach(cfg => {
-      const btn = document.createElement('button');
-      btn.type = 'button';
-      btn.className = 'helper-bar-btn' + (cfg.isRed ? ' helper-bar-btn-red' : '');
-      btn.textContent = cfg.text;
-      btn.dataset.action = cfg.action;
-      btn.addEventListener('mousedown', (e) => e.preventDefault());
-      btn.addEventListener('click', (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        handleSelectionTransformation(cfg.action);
+      transformConfigs.forEach(cfg => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'helper-bar-btn' + (cfg.isRed ? ' helper-bar-btn-red' : '');
+        btn.textContent = cfg.text;
+        btn.dataset.action = cfg.action;
+        btn.addEventListener('mousedown', (e) => e.preventDefault());
+        btn.addEventListener('click', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          handleSelectionTransformation(cfg.action);
+        });
+        transformBtnsContainer.appendChild(btn);
       });
-      transformBtnsContainer.appendChild(btn);
-    });
-    transformGroup.appendChild(transformBtnsContainer);
-    flyingToolbar.appendChild(transformGroup);
+      transformGroup.appendChild(transformBtnsContainer);
+      flyingToolbar.appendChild(transformGroup);
+    }
 
     // Group 2: Shortcuts
     if (isShortcutsEnabledOnSite && Array.isArray(activeShortcuts) && activeShortcuts.length > 0) {
@@ -253,34 +255,36 @@
     }
 
     // Group 3: Unwanted Headers
-    const headersGroup = document.createElement('div');
-    headersGroup.className = 'helper-toolbar-group helper-toolbar-group-headers';
+    if (isUnwantedHeadersEnabledOnSite) {
+      const headersGroup = document.createElement('div');
+      headersGroup.className = 'helper-toolbar-group helper-toolbar-group-headers';
 
-    const headersLabel = document.createElement('span');
-    headersLabel.className = 'helper-toolbar-group-label';
-    headersLabel.textContent = 'Unwanted Headers';
-    headersGroup.appendChild(headersLabel);
+      const headersLabel = document.createElement('span');
+      headersLabel.className = 'helper-toolbar-group-label';
+      headersLabel.textContent = 'Unwanted Headers';
+      headersGroup.appendChild(headersLabel);
 
-    const headersBtnsContainer = document.createElement('div');
-    headersBtnsContainer.className = 'helper-toolbar-group-buttons';
+      const headersBtnsContainer = document.createElement('div');
+      headersBtnsContainer.className = 'helper-toolbar-group-buttons';
 
-    const removeHeadersBtn = document.createElement('button');
-    removeHeadersBtn.type = 'button';
-    removeHeadersBtn.className = 'helper-flying-header-btn';
-    removeHeadersBtn.textContent = 'Remove Unwanted Headers';
-    removeHeadersBtn.title = 'Strip sec-fetch-*, sec-ch-ua-*, and other configured unwanted headers from this text field';
-    removeHeadersBtn.addEventListener('mousedown', (e) => e.preventDefault());
-    removeHeadersBtn.addEventListener('click', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      const targetEl = activeFocusedElement || document.activeElement;
-      if (targetEl) {
-        removeUnwantedHeadersFromElement(targetEl);
-      }
-    });
-    headersBtnsContainer.appendChild(removeHeadersBtn);
-    headersGroup.appendChild(headersBtnsContainer);
-    flyingToolbar.appendChild(headersGroup);
+      const removeHeadersBtn = document.createElement('button');
+      removeHeadersBtn.type = 'button';
+      removeHeadersBtn.className = 'helper-flying-header-btn';
+      removeHeadersBtn.textContent = 'Remove Unwanted Headers';
+      removeHeadersBtn.title = 'Strip sec-fetch-*, sec-ch-ua-*, and other configured unwanted headers from this text field';
+      removeHeadersBtn.addEventListener('mousedown', (e) => e.preventDefault());
+      removeHeadersBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const targetEl = activeFocusedElement || document.activeElement;
+        if (targetEl) {
+          removeUnwantedHeadersFromElement(targetEl);
+        }
+      });
+      headersBtnsContainer.appendChild(removeHeadersBtn);
+      headersGroup.appendChild(headersBtnsContainer);
+      flyingToolbar.appendChild(headersGroup);
+    }
   }
 
   /**
@@ -347,6 +351,11 @@
    */
   function checkAndShowFlyingToolbar(element) {
     if (!flyingToolbar || !isEnabledOnThisPage || !element) {
+      hideFlyingToolbar();
+      return;
+    }
+    // If no toolbar groups are enabled/rendered, keep hidden
+    if (flyingToolbar.children.length === 0) {
       hideFlyingToolbar();
       return;
     }
@@ -1211,12 +1220,15 @@
     }
 
     const text = getElementText(element);
-    const scanResult = TextScanner.scanTextWithRules(text, activeRules);
+    const scanResult = isReplacerEnabledOnSite
+      ? TextScanner.scanTextWithRules(text, activeRules)
+      : { hasMatches: false, matches: [] };
     const hasRedEndpoints = Boolean(record.useRed && record.redTokens && record.redTokens.size > 0);
 
     if (!scanResult.hasMatches && !hasRedEndpoints) {
       if (record.overlay) {
         record.overlay.style.display = 'none';
+        record.overlay.innerHTML = '';
       }
       return;
     }
@@ -1543,9 +1555,9 @@
     }
   });
 
-  // React to storage changes in real time (e.g. user toggled whitelist, blacklist, replacer switch, shortcuts, or updated rules)
+  // React to storage changes in real time (e.g. user toggled whitelist, replacer switch, shortcuts, transform, unwanted headers, or updated rules)
   chrome.storage.onChanged.addListener((changes) => {
-    if (changes.allowlist || changes.blacklist || changes.site_replacer_state || changes.site_shortcuts_state || changes.replacer_rules || changes.shortcuts || changes.unwanted_headers) {
+    if (changes.allowlist || changes.site_replacer_state || changes.site_shortcuts_state || changes.site_transform_state || changes.site_unwanted_headers_state || changes.replacer_rules || changes.shortcuts || changes.unwanted_headers) {
       checkAllowlistAndInitialize();
     }
   });

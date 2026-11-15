@@ -14,13 +14,12 @@ const requiredIds = [
   'current-site-host',
   'toggle-current-site-btn',
   'toggle-current-site-label',
-  'toggle-blacklist-btn',
-  'toggle-blacklist-label',
   'active-site-switches',
   'toggle-site-replacer',
   'toggle-site-storage',
-  'popup-snippets-count',
-  'popup-snippets-list',
+  'toggle-site-shortcuts',
+  'toggle-site-transform',
+  'toggle-site-unwanted-headers',
   'open-settings-btn',
   'add-feedback'
 ];
@@ -32,7 +31,14 @@ for (const id of requiredIds) {
 // Verify that "Add to Whitelist" is present
 assert(popupHtml.includes('Add to Whitelist'), 'popup.html must contain "Add to Whitelist"');
 
-// Verify that old domain inputs, footer tip, and Configuration Center are removed as requested
+// Verify that blacklist and snippets elements are removed from popup as requested
+assert(!popupHtml.includes('id="toggle-blacklist-btn"'), 'toggle-blacklist-btn should be removed from popup');
+assert(!popupHtml.includes('id="toggle-blacklist-label"'), 'toggle-blacklist-label should be removed from popup');
+assert(!popupHtml.includes('id="popup-snippets-list"'), 'popup-snippets-list should be removed from popup');
+assert(!popupHtml.includes('id="popup-snippets-count"'), 'popup-snippets-count should be removed from popup');
+assert(!popupHtml.includes('Saved Snippets'), 'Saved Snippets section should be removed from popup');
+
+// Verify that old domain inputs, footer tip, and Configuration Center are removed
 assert(!popupHtml.includes('id="custom-domain-input"'), 'custom-domain-input should be removed from popup');
 assert(!popupHtml.includes('id="allowlist-container"'), 'allowlist-container should be removed from popup');
 assert(!popupHtml.includes('Configuration Center'), 'Configuration Center card should be removed from popup');

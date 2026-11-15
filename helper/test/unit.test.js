@@ -389,20 +389,46 @@ console.log('--- RUNNING UNIT TESTS ---');
   const shortRedacted = testTransformHeaders(shortInput, 'redact');
   assert.strictEqual(shortRedacted, 'Authorization: Bearer [redacted]\ncookie: session=[redacted]');
 
-  // 13. Test Blacklist Matching
-  const blacklist = ['/admin/*', 'example.com/checkout', '*.internal.org'];
-  assert.strictEqual(AllowlistUtils.isUrlBlacklisted('https://example.com/admin/settings', blacklist), true);
-  assert.strictEqual(AllowlistUtils.isUrlBlacklisted('https://example.com/checkout', blacklist), true);
-  assert.strictEqual(AllowlistUtils.isUrlBlacklisted('https://portal.internal.org/dashboard', blacklist), true);
-  assert.strictEqual(AllowlistUtils.isUrlBlacklisted('https://example.com/public', blacklist), false);
+  // 13. Test Category Rename and Delete (with Reassign and Purge options)
+  await StorageManager.setCategories(['General', 'Billing', 'Support']);
+  const billSnip = await StorageManager.saveSnippet({
+    heading: 'Billing Invoice',
+    category: 'Billing',
+    description: 'Invoice details'
+  });
+  const supSnip = await StorageManager.saveSnippet({
+    heading: 'Support Ticket',
+    category: 'Support',
+    description: 'Ticket details'
+  });
 
-  // Test Blacklist CRUD in StorageManager
-  await StorageManager.setBlacklist(['/api/secret']);
-  assert.strictEqual((await StorageManager.getBlacklist()).length, 1);
-  await StorageManager.addBlacklist('/admin/*');
-  assert.strictEqual((await StorageManager.getBlacklist()).length, 2);
-  await StorageManager.removeBlacklist('/api/secret');
-  assert.strictEqual((await StorageManager.getBlacklist()).length, 1);
+  // Test rename category
+  await StorageManager.renameCategory('Billing', 'Finance');
+  assert.strictEqual((await StorageManager.getCategories()).includes('Finance'), true);
+  assert.strictEqual((await StorageManager.getCategories()).includes('Billing'), false);
+  const updatedBillSnip = (await StorageManager.getSnippets()).find(s => s.id === billSnip.id);
+  assert.strictEqual(updatedBillSnip.category, 'Finance');
+
+  // Test delete category with reassign to General
+  await StorageManager.deleteCategory('Finance', true);
+  assert.strictEqual((await StorageManager.getCategories()).includes('Finance'), false);
+  const reassignedSnip = (await StorageManager.getSnippets()).find(s => s.id === billSnip.id);
+  assert.strictEqual(reassignedSnip.category, 'General');
+
+  // Test delete category with purge (delete snippets)
+  await StorageManager.deleteCategory('Support', false);
+  assert.strictEqual((await StorageManager.getCategories()).includes('Support'), false);
+  const deletedSnip = (await StorageManager.getSnippets()).find(s => s.id === supSnip.id);
+  assert.strictEqual(deletedSnip, undefined);
+
+  // Test Per-Site Transform & Unwanted Headers switches
+  assert.strictEqual(await StorageManager.getSiteTransformEnabled('example.com'), true);
+  await StorageManager.setSiteTransformEnabled('example.com', false);
+  assert.strictEqual(await StorageManager.getSiteTransformEnabled('example.com'), false);
+
+  assert.strictEqual(await StorageManager.getSiteUnwantedHeadersEnabled('example.com'), true);
+  await StorageManager.setSiteUnwantedHeadersEnabled('example.com', false);
+  assert.strictEqual(await StorageManager.getSiteUnwantedHeadersEnabled('example.com'), false);
 
   // 14. Test Categories & Snippet Reordering
   assert.strictEqual((await StorageManager.getCategories()).includes('General'), true);
@@ -474,17 +500,15 @@ console.log('--- RUNNING UNIT TESTS ---');
 
   // 17. Test Import & Export with Merge Mode
   const exportPayload2 = await StorageManager.exportConfiguration();
-  assert.strictEqual(Array.isArray(exportPayload2.blacklist), true);
+  assert.strictEqual(Array.isArray(exportPayload2.allowlist), true);
   assert.strictEqual(Array.isArray(exportPayload2.shortcuts), true);
   assert.strictEqual(Array.isArray(exportPayload2.unwanted_headers), true);
 
   // Test merge mode
   const mergeFile = JSON.stringify({
-    blacklist: ['/new-blacklisted-path'],
     shortcuts: [{ id: 'sc-merged', name: 'Select All', keys: 'Ctrl+A' }]
   });
   await StorageManager.importConfiguration(mergeFile, 'merge');
-  assert.strictEqual((await StorageManager.getBlacklist()).includes('/new-blacklisted-path'), true);
   assert.strictEqual((await StorageManager.getShortcuts()).some(s => s.name === 'Select All'), true);
 
   console.log('[PASS] ALL UNIT TESTS PASSED!');

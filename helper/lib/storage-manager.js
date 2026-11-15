@@ -13,10 +13,11 @@
 
   const STORAGE_KEYS = {
     ALLOWLIST: 'allowlist',
-    BLACKLIST: 'blacklist',
     SITE_REPLACER_STATE: 'site_replacer_state',
     SITE_STORAGE_STATE: 'site_storage_state',
     SITE_SHORTCUTS_STATE: 'site_shortcuts_state',
+    SITE_TRANSFORM_STATE: 'site_transform_state',
+    SITE_UNWANTED_HEADERS_STATE: 'site_unwanted_headers_state',
     SNIPPETS: 'snippets',
     CATEGORIES: 'categories',
     SHORTCUTS: 'shortcuts',
@@ -194,6 +195,12 @@
     if (!data[STORAGE_KEYS.SITE_SHORTCUTS_STATE] || typeof data[STORAGE_KEYS.SITE_SHORTCUTS_STATE] !== 'object') {
       updates[STORAGE_KEYS.SITE_SHORTCUTS_STATE] = {};
     }
+    if (!data[STORAGE_KEYS.SITE_TRANSFORM_STATE] || typeof data[STORAGE_KEYS.SITE_TRANSFORM_STATE] !== 'object') {
+      updates[STORAGE_KEYS.SITE_TRANSFORM_STATE] = {};
+    }
+    if (!data[STORAGE_KEYS.SITE_UNWANTED_HEADERS_STATE] || typeof data[STORAGE_KEYS.SITE_UNWANTED_HEADERS_STATE] !== 'object') {
+      updates[STORAGE_KEYS.SITE_UNWANTED_HEADERS_STATE] = {};
+    }
     if (!Array.isArray(data[STORAGE_KEYS.REPLACER_RULES]) || data[STORAGE_KEYS.REPLACER_RULES].length === 0) {
       updates[STORAGE_KEYS.REPLACER_RULES] = DEFAULT_RULES;
     }
@@ -297,18 +304,30 @@
     return list;
   }
 
-  async function deleteCategory(name) {
-    if (!name) return;
-    const clean = name.trim();
-    if (clean === 'General') return;
+  async function renameCategory(oldName, newName) {
+    if (!oldName || !newName) return;
+    const cleanOld = oldName.trim();
+    const cleanNew = newName.trim();
+    if (!cleanOld || !cleanNew || cleanOld === cleanNew) return;
+    if (cleanOld === 'General') return;
+
     const list = await getCategories();
-    const updated = list.filter(c => c !== clean);
-    await setCategories(updated.length > 0 ? updated : DEFAULT_CATEGORIES);
+    const index = list.indexOf(cleanOld);
+    if (index === -1) return;
+
+    if (!list.includes(cleanNew)) {
+      list[index] = cleanNew;
+      await setCategories(list);
+    } else {
+      const filtered = list.filter(c => c !== cleanOld);
+      await setCategories(filtered);
+    }
+
     const snippets = await getSnippets();
     let changed = false;
     snippets.forEach(s => {
-      if (s.category === clean) {
-        s.category = 'General';
+      if (s.category === cleanOld) {
+        s.category = cleanNew;
         changed = true;
       }
     });
@@ -316,6 +335,34 @@
       const localArea = getLocalStorageArea();
       if (localArea) await localArea.set({ [STORAGE_KEYS.SNIPPETS]: snippets });
     }
+    return list;
+  }
+
+  async function deleteCategory(name, reassignToGeneral = true) {
+    if (!name) return;
+    const clean = name.trim();
+    if (clean === 'General') return;
+    const list = await getCategories();
+    const updated = list.filter(c => c !== clean);
+    await setCategories(updated.length > 0 ? updated : DEFAULT_CATEGORIES);
+
+    const snippets = await getSnippets();
+    let updatedSnippets;
+    if (reassignToGeneral) {
+      updatedSnippets = snippets.map(s => {
+        if (s.category === clean) {
+          return { ...s, category: 'General' };
+        }
+        return s;
+      });
+    } else {
+      updatedSnippets = snippets.filter(s => s.category !== clean);
+    }
+    const localArea = getLocalStorageArea();
+    if (localArea) {
+      await localArea.set({ [STORAGE_KEYS.SNIPPETS]: updatedSnippets });
+    }
+    return updated;
   }
 
   // --- Shortcuts API ---
@@ -478,6 +525,38 @@
     const stateMap = data[STORAGE_KEYS.SITE_STORAGE_STATE] || {};
     stateMap[domain] = Boolean(isEnabled);
     await setToStorage({ [STORAGE_KEYS.SITE_STORAGE_STATE]: stateMap });
+  }
+
+  // --- Per-Site Transform Switch API ---
+  async function getSiteTransformEnabled(domain) {
+    if (!domain) return true;
+    const data = await getFromStorage([STORAGE_KEYS.SITE_TRANSFORM_STATE]);
+    const stateMap = data[STORAGE_KEYS.SITE_TRANSFORM_STATE] || {};
+    return stateMap[domain] !== false;
+  }
+
+  async function setSiteTransformEnabled(domain, isEnabled) {
+    if (!domain) return;
+    const data = await getFromStorage([STORAGE_KEYS.SITE_TRANSFORM_STATE]);
+    const stateMap = data[STORAGE_KEYS.SITE_TRANSFORM_STATE] || {};
+    stateMap[domain] = Boolean(isEnabled);
+    await setToStorage({ [STORAGE_KEYS.SITE_TRANSFORM_STATE]: stateMap });
+  }
+
+  // --- Per-Site Unwanted Headers Switch API ---
+  async function getSiteUnwantedHeadersEnabled(domain) {
+    if (!domain) return true;
+    const data = await getFromStorage([STORAGE_KEYS.SITE_UNWANTED_HEADERS_STATE]);
+    const stateMap = data[STORAGE_KEYS.SITE_UNWANTED_HEADERS_STATE] || {};
+    return stateMap[domain] !== false;
+  }
+
+  async function setSiteUnwantedHeadersEnabled(domain, isEnabled) {
+    if (!domain) return;
+    const data = await getFromStorage([STORAGE_KEYS.SITE_UNWANTED_HEADERS_STATE]);
+    const stateMap = data[STORAGE_KEYS.SITE_UNWANTED_HEADERS_STATE] || {};
+    stateMap[domain] = Boolean(isEnabled);
+    await setToStorage({ [STORAGE_KEYS.SITE_UNWANTED_HEADERS_STATE]: stateMap });
   }
 
   // --- Snippets API ---
@@ -658,9 +737,8 @@
 
   // --- Import / Export API ---
   async function exportConfiguration() {
-    const [allowlist, blacklist, categories, shortcuts, unwantedHeaders, snippets, rules] = await Promise.all([
+    const [allowlist, categories, shortcuts, unwantedHeaders, snippets, rules] = await Promise.all([
       getAllowlist(),
-      getBlacklist(),
       getCategories(),
       getShortcuts(),
       getUnwantedHeaders(),
@@ -673,7 +751,6 @@
       appName: 'Helper',
       exportedAt: new Date().toISOString(),
       allowlist: allowlist,
-      blacklist: blacklist,
       categories: categories,
       shortcuts: shortcuts,
       unwanted_headers: unwantedHeaders,
@@ -705,17 +782,6 @@
         updates[STORAGE_KEYS.ALLOWLIST] = merged;
       } else {
         updates[STORAGE_KEYS.ALLOWLIST] = parsed.allowlist;
-      }
-    }
-
-    // Blacklist
-    if (Array.isArray(parsed.blacklist)) {
-      if (isMerge) {
-        const current = await getBlacklist();
-        const merged = Array.from(new Set([...current, ...parsed.blacklist]));
-        updates[STORAGE_KEYS.BLACKLIST] = merged;
-      } else {
-        updates[STORAGE_KEYS.BLACKLIST] = parsed.blacklist;
       }
     }
 
@@ -849,6 +915,7 @@
     getCategories: getCategories,
     setCategories: setCategories,
     addCategory: addCategory,
+    renameCategory: renameCategory,
     deleteCategory: deleteCategory,
     getShortcuts: getShortcuts,
     setShortcuts: setShortcuts,
@@ -856,6 +923,10 @@
     deleteShortcut: deleteShortcut,
     getSiteShortcutsEnabled: getSiteShortcutsEnabled,
     setSiteShortcutsEnabled: setSiteShortcutsEnabled,
+    getSiteTransformEnabled: getSiteTransformEnabled,
+    setSiteTransformEnabled: setSiteTransformEnabled,
+    getSiteUnwantedHeadersEnabled: getSiteUnwantedHeadersEnabled,
+    setSiteUnwantedHeadersEnabled: setSiteUnwantedHeadersEnabled,
     getUnwantedHeaders: getUnwantedHeaders,
     setUnwantedHeaders: setUnwantedHeaders,
     addUnwantedHeader: addUnwantedHeader,

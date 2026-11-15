@@ -9,7 +9,6 @@ const settingsHtml = fs.readFileSync(path.join(__dirname, '../settings/settings.
 const requiredSettingsIds = [
   // Navigation
   'nav-whitelist',
-  'nav-blacklist',
   'nav-snippets',
   'nav-rules',
   'nav-shortcuts',
@@ -21,13 +20,6 @@ const requiredSettingsIds = [
   'whitelist-list',
   'whitelist-count',
   'whitelist-empty',
-  // Blacklist Tab
-  'tab-blacklist',
-  'add-blacklist-form',
-  'blacklist-input',
-  'blacklist-list',
-  'blacklist-count',
-  'blacklist-empty',
   // Snippets Tab
   'tab-snippets',
   'snippet-form',
@@ -35,6 +27,12 @@ const requiredSettingsIds = [
   'snippet-heading',
   'snippet-category',
   'snippet-add-category-btn',
+  'snippet-category-actions-btn',
+  'category-actions-menu',
+  'action-rename-category-btn',
+  'action-delete-category-btn',
+  'modal-rename-category',
+  'modal-delete-category',
   'settings-category-filter',
   'snippet-description',
   'snippet-submit-btn',
@@ -92,6 +90,8 @@ for (const id of requiredSettingsIds) {
 }
 
 // Verify removed elements are absent
+assert(!settingsHtml.includes('id="tab-blacklist"'), 'tab-blacklist must be removed');
+assert(!settingsHtml.includes('id="nav-blacklist"'), 'nav-blacklist must be removed');
 assert(!settingsHtml.includes('id="storage-setup-banner"'), 'storage-setup-banner must be removed');
 assert(!settingsHtml.includes('id="tab-import-export"'), 'tab-import-export must be removed');
 assert(!settingsHtml.includes('id="nav-file-sync"'), 'nav-file-sync must be removed');
