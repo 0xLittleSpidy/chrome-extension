@@ -95,6 +95,15 @@ assert(!settingsHtml.includes('id="nav-blacklist"'), 'nav-blacklist must be remo
 assert(!settingsHtml.includes('id="storage-setup-banner"'), 'storage-setup-banner must be removed');
 assert(!settingsHtml.includes('id="tab-import-export"'), 'tab-import-export must be removed');
 assert(!settingsHtml.includes('id="nav-file-sync"'), 'nav-file-sync must be removed');
+assert(!settingsHtml.includes('id="settings-sync-indicator"'), 'settings-sync-indicator must be removed');
+
+// Verify renamed headers and sections
+assert(settingsHtml.includes('Add Exact URL'), 'Must contain "Add Exact URL"');
+assert(settingsHtml.includes('Approved URLs'), 'Must contain "Approved URLs"');
+assert(settingsHtml.includes('<h2 class="section-title">Snippets</h2>'), 'Must contain renamed "Snippets" heading');
+assert(settingsHtml.includes('<h2 class="section-title">Replacer Rules</h2>'), 'Must contain renamed "Replacer Rules" heading');
+assert(settingsHtml.includes('<h2 class="section-title">Shortcuts</h2>'), 'Must contain renamed "Shortcuts" heading');
+assert(settingsHtml.includes('<span class="form-label">Options</span>'), 'Must contain renamed "Options" label');
 
 // Verify dark theme is configured by default
 assert(settingsHtml.includes('data-theme="dark"'), 'settings.html must default to data-theme="dark"');

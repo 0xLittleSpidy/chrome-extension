@@ -260,10 +260,11 @@ if (chrome.contextMenus && chrome.contextMenus.onClicked) {
       // Try pasting directly into active/focused field in tab
       if (tab && tab.id) {
         try {
+          const sendOptions = typeof info.frameId === 'number' ? { frameId: info.frameId } : {};
           chrome.tabs.sendMessage(tab.id, {
             type: 'PASTE_SNIPPET',
             text: textToPaste
-          }, () => {
+          }, sendOptions, () => {
             if (chrome.runtime.lastError) {
               // Non-scriptable page or content script inactive
             }
@@ -275,9 +276,8 @@ if (chrome.contextMenus && chrome.contextMenus.onClicked) {
 
       try {
         await copyToClipboard(textToPaste);
-        await notifyUser('Helper: Snippet Ready', `"${optionLabel}" ready.`);
       } catch (err) {
-        await notifyUser('Helper: Copy Error', 'Failed to copy snippet to clipboard.');
+        // Handled: content script also attempts direct clipboard copy
       }
     }
   });

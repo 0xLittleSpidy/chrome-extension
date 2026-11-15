@@ -29,6 +29,17 @@
   let mutationObserver = null;
   let lastKnownUrl = window.location.href;
 
+  // Track context menu target and focus on all pages unconditionally
+  document.addEventListener('contextmenu', (e) => {
+    lastContextMenuTarget = e.target;
+  }, true);
+
+  document.addEventListener('focusin', (e) => {
+    if (isValidTextField(e.target) || (e.target && e.target.closest && e.target.closest('textarea, input, [contenteditable="true"], [contenteditable=""]'))) {
+      activeFocusedElement = e.target;
+    }
+  }, true);
+
   // Tracked inputs and their overlays: Map<HTMLElement, OverlayRecord>
   const trackedElements = new Map();
 
@@ -787,19 +798,90 @@
     }
   }
 
+  let copiedToastElement = null;
+  let copiedToastTimer = null;
+
+  function showCopiedToast(message = 'Copied to clipboard') {
+    if (!copiedToastElement) {
+      copiedToastElement = document.createElement('div');
+      copiedToastElement.id = 'helper-copied-toast';
+      copiedToastElement.style.cssText = [
+        'position: fixed',
+        'bottom: 24px',
+        'left: 50%',
+        'transform: translateX(-50%)',
+        'background-color: #1e293b',
+        'color: #f8fafc',
+        'padding: 6px 14px',
+        'border-radius: 9999px',
+        'font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+        'font-size: 12px',
+        'font-weight: 500',
+        'line-height: 1.4',
+        'box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35)',
+        'border: 1px solid rgba(255, 255, 255, 0.15)',
+        'z-index: 2147483647',
+        'pointer-events: none',
+        'opacity: 0',
+        'transition: opacity 0.12s ease',
+        'white-space: nowrap'
+      ].join(';');
+      const container = document.body || document.documentElement;
+      if (container) {
+        container.appendChild(copiedToastElement);
+      }
+    } else if (!copiedToastElement.parentNode) {
+      const container = document.body || document.documentElement;
+      if (container) {
+        container.appendChild(copiedToastElement);
+      }
+    }
+
+    if (copiedToastTimer) {
+      clearTimeout(copiedToastTimer);
+      copiedToastTimer = null;
+    }
+
+    copiedToastElement.textContent = message;
+    copiedToastElement.style.display = 'block';
+    void copiedToastElement.offsetWidth;
+    copiedToastElement.style.opacity = '1';
+
+    copiedToastTimer = setTimeout(() => {
+      if (copiedToastElement) {
+        copiedToastElement.style.opacity = '0';
+        setTimeout(() => {
+          if (copiedToastElement && copiedToastElement.style.opacity === '0') {
+            copiedToastElement.style.display = 'none';
+          }
+        }, 150);
+      }
+    }, 500);
+  }
+
+  function getTargetField(el) {
+    if (!el || !(el instanceof HTMLElement)) return null;
+    if (isValidTextField(el)) return el;
+    if (el.closest) {
+      const closestEditable = el.closest('textarea, input, [contenteditable="true"], [contenteditable=""]');
+      if (closestEditable && isValidTextField(closestEditable)) {
+        return closestEditable;
+      }
+    }
+    return null;
+  }
+
   /**
    * Inserts text directly into the active field and dispatches events.
    */
   function pasteTextIntoActiveElement(text) {
-    const el = (lastContextMenuTarget && isValidTextField(lastContextMenuTarget))
-      ? lastContextMenuTarget
-      : ((activeFocusedElement && isValidTextField(activeFocusedElement))
-        ? activeFocusedElement
-        : (isValidTextField(document.activeElement) ? document.activeElement : null));
+    const rawTarget = lastContextMenuTarget || activeFocusedElement || document.activeElement;
+    const el = getTargetField(rawTarget);
 
     if (!el) return;
 
     if (el.tagName && (el.tagName.toLowerCase() === 'textarea' || el.tagName.toLowerCase() === 'input')) {
+      el.focus();
       const start = typeof el.selectionStart === 'number' ? el.selectionStart : el.value.length;
       const end = typeof el.selectionEnd === 'number' ? el.selectionEnd : el.value.length;
       const val = el.value || '';
@@ -808,12 +890,16 @@
       el.selectionStart = el.selectionEnd = start + text.length;
       el.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
       el.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
-      updateOverlayForElement(el);
-    } else if (el.isContentEditable) {
+      if (typeof updateOverlayForElement === 'function' && trackedElements.has(el)) {
+        updateOverlayForElement(el);
+      }
+    } else if (el.isContentEditable || (el.getAttribute && (el.getAttribute('contenteditable') === 'true' || el.getAttribute('contenteditable') === ''))) {
       el.focus();
       document.execCommand('insertText', false, text);
       el.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
-      updateOverlayForElement(el);
+      if (typeof updateOverlayForElement === 'function' && trackedElements.has(el)) {
+        updateOverlayForElement(el);
+      }
     }
   }
 
@@ -1550,6 +1636,10 @@
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message && (message.type === 'PASTE_SNIPPET' || message.action === 'PASTE_SNIPPET')) {
       pasteTextIntoActiveElement(message.text);
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(message.text).catch(() => {});
+      }
+      showCopiedToast('Copied to clipboard');
       sendResponse({ success: true });
       return true;
     }

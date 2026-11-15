@@ -15,12 +15,6 @@
         <div class="brand-info-wrap">
           <div class="brand-title-row">
             <h1 class="brand-title">Helper</h1>
-            <div id="settings-sync-indicator" class="settings-sync-badge" title="Auto-sync active">
-              <svg class="sync-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>
-              </svg>
-              <span>Synced</span>
-            </div>
           </div>
           <p class="brand-subtitle">Configuration Center</p>
         </div>
@@ -69,12 +63,11 @@
         <header class="section-header">
           <div>
             <h2 class="section-title">Whitelist Management</h2>
-            <p class="section-desc">Manage the websites and specific URLs (including exact paths and query parameters) where Helper text scanning and replacement is allowed to run.</p>
           </div>
         </header>
 
         <div class="card">
-          <h3 class="card-title">Add Website or Exact URL</h3>
+          <h3 class="card-title">Add Exact URL</h3>
           <form id="add-whitelist-form" class="form-row">
             <input 
               type="text" 
@@ -85,13 +78,13 @@
               spellcheck="false" 
               required
             />
-            <button type="submit" class="btn btn-primary">Add Website</button>
+            <button type="submit" class="btn btn-primary">Add URL</button>
           </form>
         </div>
 
         <div class="card">
           <div class="card-header-flex">
-            <h3 class="card-title">Approved Websites</h3>
+            <h3 class="card-title">Approved URLs</h3>
             <span id="whitelist-count" class="badge">0 items</span>
           </div>
 
@@ -101,7 +94,6 @@
 
           <div id="whitelist-empty" class="empty-state">
             <p class="empty-title">No websites in whitelist</p>
-            <p class="empty-desc">Helper only scans text fields on allowlisted websites. Add one above to get started.</p>
           </div>
         </div>
       </section>
@@ -110,8 +102,7 @@
       <section id="tab-snippets" class="tab-panel">
         <header class="section-header">
           <div>
-            <h2 class="section-title">Frequently Used Snippets</h2>
-            <p class="section-desc">Store common text snippets. Right-click on any page to view them and paste with one click.</p>
+            <h2 class="section-title">Snippets</h2>
           </div>
         </header>
 
@@ -122,7 +113,7 @@
             
             <div class="form-row-2col">
               <div class="form-group">
-                <label for="snippet-heading" class="form-label">Heading (Title in Context Menu)</label>
+                <label for="snippet-heading" class="form-label">Heading</label>
                 <input 
                   type="text" 
                   id="snippet-heading" 
@@ -150,8 +141,7 @@
             <div class="form-group">
               <div class="answers-header-row">
                 <div>
-                  <span class="form-label">Answer Options (Multiple responses supported)</span>
-                  <p class="form-help-text">Add multiple answer options if this note has different replies. Select which one to copy anytime.</p>
+                  <span class="form-label">Options</span>
                 </div>
                 <div class="answers-btn-group">
                   <button type="button" id="snippet-add-answer-btn" class="btn btn-secondary btn-sm">+ Add Answer Option</button>
@@ -212,7 +202,6 @@
 
           <div id="snippets-empty" class="empty-state">
             <p class="empty-title">No snippets saved</p>
-            <p class="empty-desc">Create your first snippet above. It will instantly be available in the right-click context menu.</p>
           </div>
         </div>
       </section>
@@ -221,8 +210,7 @@
       <section id="tab-rules" class="tab-panel">
         <header class="section-header">
           <div>
-            <h2 class="section-title">Dynamic Replacer Rules</h2>
-            <p class="section-desc">Configure word and phrase replacement rules. Highlighted words can be replaced with one click in text fields.</p>
+            <h2 class="section-title">Replacer Rules</h2>
           </div>
         </header>
 
@@ -294,8 +282,7 @@
       <section id="tab-shortcuts" class="tab-panel">
         <header class="section-header">
           <div>
-            <h2 class="section-title">Flying Shortcuts</h2>
-            <p class="section-desc">Create shortcut buttons that appear as a floating toolbar inside textboxes. Clicking a button runs that action or keystroke for you.</p>
+            <h2 class="section-title">Shortcuts</h2>
           </div>
         </header>
 
@@ -330,7 +317,6 @@
           </div>
           <div id="shortcuts-empty" class="empty-state">
             <p class="empty-title">No shortcuts configured</p>
-            <p class="empty-desc">Create your first shortcut above. It will appear as a flying button inside textboxes on whitelisted pages.</p>
           </div>
         </div>
       </section>
@@ -340,7 +326,6 @@
         <header class="section-header">
           <div>
             <h2 class="section-title">Remove Unwanted Headers</h2>
-            <p class="section-desc">Configure header patterns to remove from textboxes. In text fields, clicking the floating 'Remove Unwanted Headers' button strips all lines starting with these headers. Wildcards like * match any headers with that prefix (e.g. sec-fetch-* matches sec-fetch-dest, sec-fetch-mode, etc.).</p>
           </div>
         </header>
 

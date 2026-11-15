@@ -526,6 +526,37 @@ async function runTest() {
   assert(pastedVal.includes('Hello Direct Paste!'), 'Textarea must contain directly pasted snippet text');
   console.log('[PASS] Snippet paste action successfully inserts text into focused field.');
 
+  const toastVisible = await evalInPage(`
+    (() => {
+      const toast = document.getElementById('helper-copied-toast');
+      return Boolean(toast && toast.textContent.includes('Copied to clipboard'));
+    })()
+  `);
+  assert(toastVisible, 'Copied toast notification must appear when snippet is pasted');
+  console.log('[PASS] Copied toast notification appears at bottom center of active tab.');
+
+  // Test right-click context menu target paste without prior focus
+  console.log('[Paste Snippet] Testing right-click context menu target paste without prior focus...');
+  await evalInPage(`
+    (() => {
+      const ta = document.getElementById('textarea-standard');
+      ta.blur();
+      ta.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+    })()
+  `);
+  await evalInSW(`
+    (async () => {
+      const [tab] = await chrome.tabs.query({ url: 'http://127.0.0.1:${PORT}/*' });
+      if (tab) {
+        await chrome.tabs.sendMessage(tab.id, { type: 'PASTE_SNIPPET', text: ' [Context Target Paste]' });
+      }
+    })()
+  `);
+  await new Promise(r => setTimeout(r, 400));
+  const contextPastedVal = await evalInPage(`document.getElementById('textarea-standard').value`);
+  assert(contextPastedVal.includes('[Context Target Paste]'), 'Unfocused field targeted by right-click must receive paste');
+  console.log('[PASS] Unfocused field targeted by right-click successfully receives paste.');
+
   // 14d. Test Unified Flying Toolbar (Only on Selection, Group Order: Transform, Shortcuts, Unwanted Headers)
   console.log('[Flying Toolbar] Testing unified flying toolbar grouping and display on selection...');
   await evalInSW(`

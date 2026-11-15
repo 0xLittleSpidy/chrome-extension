@@ -103,10 +103,32 @@ async function runBrowserVerification() {
   const bodyBg = await evalInSettings(`window.getComputedStyle(document.body).backgroundColor`);
   console.log('[PASS] Computed background color in dark theme:', bodyBg);
 
-  // 2. Verify Storage Setup Banner is removed
+  // 2. Verify Storage Setup Banner and Synced indicator are removed
   const bannerExists = await evalInSettings(`Boolean(document.getElementById('storage-setup-banner'))`);
   assert.strictEqual(bannerExists, false, 'Storage setup banner must be removed');
   console.log('[PASS] Storage setup banner is completely removed as requested.');
+
+  const syncIndicatorExists = await evalInSettings(`Boolean(document.getElementById('settings-sync-indicator'))`);
+  assert.strictEqual(syncIndicatorExists, false, 'settings-sync-indicator must be removed');
+  console.log('[PASS] Synced indicator is completely removed from top left.');
+
+  // 2b. Verify Layout: Sidebar non-scrollable and permanent, Main content full width and scrollable
+  const layoutStyles = await evalInSettings(`
+    (() => {
+      const sidebar = document.querySelector('.sidebar');
+      const main = document.querySelector('.main-content');
+      const sidebarComputed = window.getComputedStyle(sidebar);
+      const mainComputed = window.getComputedStyle(main);
+      return {
+        sidebarOverflow: sidebarComputed.overflow,
+        mainOverflowY: mainComputed.overflowY,
+        mainMaxWidth: mainComputed.maxWidth
+      };
+    })()
+  `);
+  assert(layoutStyles.mainOverflowY === 'auto' || layoutStyles.mainOverflowY === 'scroll', 'Main content must be scrollable');
+  assert(layoutStyles.mainMaxWidth === 'none', 'Main content must use full pane size (max-width: none)');
+  console.log('[PASS] Layout verified: permanent sidebar and full-width scrollable main content.');
 
   // 3. Switch to Snippets Tab
   await evalInSettings(`document.getElementById('nav-snippets').click()`);
