@@ -1,0 +1,13 @@
+{
+  "name": "openapi-extractor-extension",
+  "version": "1.0.0",
+  "description": "Chrome extension that crawls API documentation pages to extract and merge OpenAPI 3.0.1 specifications.",
+  "type": "module",
+  "scripts": {
+    "test:unit": "node test/unit.test.js",
+    "qa": "node test/qa-runner.js",
+    "test": "node test/unit.test.js && node test/qa-runner.js"
+  },
+  "author": "Antigravity",
+  "license": "MIT"
+}

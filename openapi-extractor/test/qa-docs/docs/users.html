@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Users API</title>
+</head>
+<body>
+  <nav>
+    <a href="/docs/index.html">Overview</a>
+    <a href="/docs/users.html">Users API</a>
+    <a href="/docs/tokens.html">Tokens API</a>
+  </nav>
+  <main>
+    <h1>Users Endpoints</h1>
+    <pre><code>{
+      "openapi": "3.0.1",
+      "tags": [{"name": "Users", "description": "User management"}],
+      "paths": {
+        "/api/v1/users": {
+          "get": {
+            "summary": "List users",
+            "tags": ["Users"],
+            "responses": {"200": {"description": "OK"}}
+          },
+          "post": {
+            "summary": "Create user",
+            "tags": ["Users"],
+            "responses": {"201": {"description": "Created"}}
+          }
+        }
+      },
+      "components": {
+        "schemas": {
+          "User": {
+            "type": "object",
+            "properties": {
+              "id": {"type": "string"},
+              "email": {"type": "string"}
+            }
+          }
+        }
+      }
+    }</code></pre>
+  </main>
+</body>
+</html>

@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>API Doc OpenAPI Extractor</title>
+  <link rel="stylesheet" href="sidepanel.css">
+</head>
+<body>
+  <header class="app-header">
+    <div class="header-top">
+      <h1>OpenAPI Extractor</h1>
+      <span id="status-badge" class="badge badge-idle">Idle</span>
+    </div>
+    <p id="active-url" class="active-url">Detecting active tab...</p>
+  </header>
+
+  <main class="app-main">
+    <section class="controls-card" aria-labelledby="crawl-settings-heading">
+      <h2 id="crawl-settings-heading" class="visually-hidden">Crawl Settings</h2>
+      <div class="field-row">
+        <div class="field">
+          <label for="path-prefix-input">Path Scope Prefix</label>
+          <input id="path-prefix-input" type="text" value="/" placeholder="/apidocs/">
+        </div>
+        <div class="field field-small">
+          <label for="max-pages-input">Max Pages</label>
+          <input id="max-pages-input" type="number" min="1" max="1000" value="200">
+        </div>
+      </div>
+
+      <div class="action-row">
+        <button id="crawl-btn" type="button" class="btn btn-primary">Crawl Page</button>
+        <button id="stop-btn" type="button" class="btn btn-danger" hidden>Stop</button>
+        <button id="clear-btn" type="button" class="btn btn-secondary">Clear</button>
+      </div>
+
+      <div id="progress-container" class="progress-container" hidden>
+        <progress id="crawl-progress" max="100" value="0"></progress>
+      </div>
+
+      <p id="status-message" class="status-message" aria-live="polite">
+        Open an API documentation page and click Crawl Page.
+      </p>
+    </section>
+
+    <section class="stats-grid" aria-label="Extraction Summary">
+      <div class="stat-card">
+        <span class="stat-label">Pages</span>
+        <strong id="stat-pages" class="stat-value">0</strong>
+      </div>
+      <div class="stat-card">
+        <span class="stat-label">Paths</span>
+        <strong id="stat-paths" class="stat-value">0</strong>
+      </div>
+      <div class="stat-card">
+        <span class="stat-label">Endpoints</span>
+        <strong id="stat-operations" class="stat-value">0</strong>
+      </div>
+      <div class="stat-card">
+        <span class="stat-label">Schemas</span>
+        <strong id="stat-schemas" class="stat-value">0</strong>
+      </div>
+    </section>
+
+    <section class="export-bar" aria-label="Export OpenAPI Specification">
+      <button id="download-json-btn" type="button" class="btn btn-accent" disabled>Download JSON</button>
+      <button id="download-yaml-btn" type="button" class="btn btn-accent" disabled>Download YAML</button>
+      <button id="copy-json-btn" type="button" class="btn btn-secondary" disabled>Copy JSON</button>
+    </section>
+
+    <section class="endpoints-section" aria-labelledby="endpoints-heading">
+      <div class="endpoints-header">
+        <h2 id="endpoints-heading">Discovered Endpoints</h2>
+        <span id="visible-count" class="count-pill">0</span>
+      </div>
+
+      <div class="filter-bar">
+        <label for="search-input" class="visually-hidden">Filter endpoints</label>
+        <input id="search-input" type="search" placeholder="Filter by path, method, or summary...">
+        <div class="method-filters" role="group" aria-label="Filter by HTTP method">
+          <button type="button" class="method-chip active" data-method="ALL">ALL</button>
+          <button type="button" class="method-chip" data-method="GET">GET</button>
+          <button type="button" class="method-chip" data-method="POST">POST</button>
+          <button type="button" class="method-chip" data-method="PUT">PUT</button>
+          <button type="button" class="method-chip" data-method="PATCH">PATCH</button>
+          <button type="button" class="method-chip" data-method="DELETE">DELETE</button>
+        </div>
+      </div>
+
+      <div class="table-wrap">
+        <table id="endpoints-table">
+          <caption class="visually-hidden">Extracted API endpoints</caption>
+          <thead>
+            <tr>
+              <th scope="col">Method</th>
+              <th scope="col">Path</th>
+              <th scope="col">Summary</th>
+            </tr>
+          </thead>
+          <tbody id="endpoints-tbody">
+          </tbody>
+        </table>
+        <p id="empty-state" class="empty-state">No endpoints extracted yet.</p>
+      </div>
+    </section>
+  </main>
+
+  <script type="module" src="sidepanel.js"></script>
+</body>
+</html>
